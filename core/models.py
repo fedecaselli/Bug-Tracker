@@ -5,6 +5,13 @@ from .db import Base
 '''
 when finishing setting up the database, check that all enforcements on data work correctly
 '''
+#ASSOCIATION, no extra data so no need to do full ORM model with class Issue_Tag 
+issue_tags = Table(
+    "issue_tags",
+    Base.metadata,
+    Column("issue_id", Integer, ForeignKey("issues.issue_id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.tag_id", ondelete="CASCADE"), primary_key=True),
+)
 
 class Issue(Base): 
     __tablename__ = 'issues' 
@@ -33,7 +40,7 @@ class Issue(Base):
     
     #relationships
     project = relationship("Project", back_populates="issues")
-    tags = relationship("Tag", secondary="issues_tags", back_populates="issues")
+    tags = relationship("Tag", secondary=issue_tags, back_populates="issues")
     
     
     """
@@ -63,18 +70,12 @@ class Project(Base):
     name = Column(String(200), nullable=False, unique=True)
     created_at = Column(DateTime, server_default=func.now())
     
-    issues = relationship("Issue", back_populates="project")
+    issues = relationship("Issue", back_populates="project", passive_deletes=True) #passive_deletes=True because of CASCADE
     
       
 #Filter by tags and asignee, status and priority
 
-#ASSOCIATION, no extra data so no need to do full ORM model with class Issue_Tag 
-issue_tags = Table(
-    "issue_tags",
-    Base.metadata,
-    Column("issue_id", Integer, ForeignKey("issues.issue_id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", Integer, ForeignKey("tags.tag_id", ondelete="CASCADE"), primary_key=True),
-)
+
 
 
 class Tag(Base):

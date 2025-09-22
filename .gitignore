@@ -5,5 +5,5 @@ __pycache__/
 # Virtual Environment
 venv/
 
-# Database files
+# SQLite database files
 .db

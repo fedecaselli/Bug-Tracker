@@ -7,7 +7,7 @@ Update = optional fields.
 Out = what API returns.
 '''
 from typing import Optional
-from pydantic import BaseModel, constr, Field
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import List
 from typing_extensions import Annotated, StringConstraints

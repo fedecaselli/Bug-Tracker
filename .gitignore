@@ -7,3 +7,6 @@ venv/
 
 # SQLite database files
 .db
+
+# Environment variables
+.env

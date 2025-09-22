@@ -1,3 +1,6 @@
+'''
+Test to ensure priority accepts low, medium, high & status accepts open, in_progress & closed
+'''
 import pytest
 from core.models import Project, Issue
 

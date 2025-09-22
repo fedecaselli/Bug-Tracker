@@ -1,5 +1,9 @@
+'''
+Test to ensure all tables exist in the database
+'''
+
 from sqlalchemy import inspect
-#check that tables exist in database 
+
 def test_tables_exist(engine):
     insp = inspect(engine)
     names = set(insp.get_table_names())

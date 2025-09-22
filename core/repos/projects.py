@@ -33,7 +33,7 @@ def delete_project(db:Session, project_id: int) -> bool:
 
     
 #UPDATE
-def update_project(db: Session, project_id: int, project_in: ProjectUpdate) -> models.project | None:
+def update_project(db: Session, project_id: int, project_in: ProjectUpdate) -> models.Project | None:
     """Update a project if it exists."""
     project = get_project(db, project_id)
     if not project:
@@ -48,5 +48,5 @@ def update_project(db: Session, project_id: int, project_in: ProjectUpdate) -> m
     return project
 
 #LIST
-def list_projects(db: Session) -> list[models.Project]: 
-    return db.query(models.Project).all()
+def list_projects(db: Session, skip: int = 0, limit: int = 100) -> list[models.Project]:
+    return db.query(models.Project).offset(skip).limit(limit).all()

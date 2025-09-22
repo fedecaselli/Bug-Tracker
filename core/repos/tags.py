@@ -46,5 +46,7 @@ def update_tag(db: Session, tag_id: int, tag_in: TagUpdate) -> models.Tag | None
     return tag
 
 #LIST
-def list_tags(db: Session) -> list[models.Tag]: 
-    return db.query(models.Tag).all()
+def list_tags(db: Session, skip: int = 0, limit: int = 100) -> list[models.Tag]:
+    return db.query(models.Tag).offset(skip).limit(limit).all()
+
+     

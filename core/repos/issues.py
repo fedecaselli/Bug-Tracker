@@ -57,8 +57,8 @@ def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Is
     
     
 #LIST
-def list_issues(db: Session) -> list[models.Issue]: 
-    return db.query(models.Issue).all()
+def list_issues(db: Session, skip: int = 0, limit: int = 100) -> list[models.Issue]:
+    return db.query(models.Issue).offset(skip).limit(limit).all()
 
      
 

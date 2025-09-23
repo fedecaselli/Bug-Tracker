@@ -42,15 +42,21 @@ def delete_issue(db:Session, issue_id: int) -> bool:
 
 #UPDATE ISSUE
 def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Issue | None:
-    """Update a project if it exists."""
+    """Update an issue if it exists."""
     issue = get_issue(db, issue_id)
     if not issue:
         return None
-    
-    # Only update fields that were sent
-    for field, value in issue_in.model_dump(exclude_unset=True).items():
+
+    data = issue_in.model_dump(exclude_unset=True)
+    if "tags" in data and data["tags"] is not None:
+        tag_names = data.pop("tags")
+        tags = db.query(models.Tag).filter(models.Tag.name.in_(tag_names)).all()
+        issue.tags = tags
+
+    #update other fields by looping
+    for field, value in data.items():
         setattr(issue, field, value)
-    
+
     db.commit()
     db.refresh(issue)
     return issue

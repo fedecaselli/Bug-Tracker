@@ -33,3 +33,10 @@ def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = D
 @router.delete("/{project_id}", response_model=bool)
 def delete_project(project_id: int, db: Session = Depends(get_db)):
     return repo_projects.delete_project(db, project_id)
+
+@router.get("/{project_id}/issues", response_model=list[schemas.IssueOut])
+def list_issues_for_project(project_id: int, db: Session = Depends(get_db)):
+    project = repo_projects.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return db.query(models.Issue).filter(models.Issue.project_id == project_id).all()

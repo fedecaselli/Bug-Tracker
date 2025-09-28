@@ -2,6 +2,8 @@ from core.db import SessionLocal
 import typer
 from core.models import Project, Issue
 from typing import Optional
+import sys
+
 '''
 def get_db():
     db = SessionLocal() 
@@ -35,17 +37,28 @@ def create_project(name: str = typer.Option(..., "--name", help="Project name"))
         db.close()
         
     
-@project_app.command("delete")
-def delete_project(project_id: int):
+@project_app.command("rm")
+def delete_project(
+    project_id: Optional[int] = typer.Option(None, "--id", help="Project ID"),
+    name: Optional[str] = typer.Option(None, "--name", help="Project name")
+):
     db = SessionLocal()
     try:
-        project = db.get(Project, project_id)
+        project = None
+        if project_id is not None:
+            project = db.get(Project, project_id)
+        elif name is not None:
+            project = db.query(Project).filter_by(name=name).first()
+        else:
+            typer.echo("Provide either --id or --name to delete a project")
+            raise typer.Exit(code=1)
+
         if not project:
-            typer.echo(f"Project not found")
+            typer.echo("Project not found")
             raise typer.Exit(code=1)
         db.delete(project)
         db.commit()
-        typer.echo(f"Project {project_id} successfully deleted")
+        typer.echo(f"Project '{project.name}' (id: {project.project_id}) successfully deleted")
     finally:
         db.close()
 
@@ -64,18 +77,21 @@ def list_project():
         
         
 #ISSUE
-        
+
 @issue_app.command("create")
 def create_issue(project_id: int = typer.Option(..., "--project", help="Project id"), 
                  title: str = typer.Option(..., "--title"),
                  description: Optional[str] = typer.Option(None, "--description"),
-                 log: Optional[str] = typer.Option(None, "--log"),
+                 log: Optional[str] = typer.Option(None, "--log", help="Log text, or '-' to read from stdin"),
                  summary: Optional[str] = typer.Option(None, "--summary"),
-                 priority: str = typer.Option(...,"--priority", help="Insert low, medium or high"),
-                 status: str = typer.Option(..., "--status", help="Insert open, in_progress or closed"),
+                 priority: str = typer.Option(...,"--priority", help="low | medium | high"),
+                 status: str = typer.Option(..., "--status", help="open | in_progress | closed"),
                  assignee: Optional[str] = typer.Option(None,"--assignee", help="Person responsible for resolving the issue")):
     db = SessionLocal()
     try:
+        if log == "-":
+            log = sys.stdin.read()
+            
         if not db.get(Project, project_id):
             typer.echo(f"Project {project_id} not found")
             raise typer.Exit(code=1)
@@ -105,10 +121,13 @@ def delete_issue(issue_id: int):
         db.close()
 
 @issue_app.command("list")
-def list_issue():
+def list_issue(
+    limit: int = typer.Option(20, "--limit", help="Max issues to show"),
+    offset: int = typer.Option(0, "--offset", help="Skip first N issues")
+):
     db = SessionLocal()
     try:
-        rows = db.query(Issue).all()
+        rows = db.query(Issue).offset(offset).limit(limit).all()
         if not rows:
             typer.echo("No registered issues")
             return 
@@ -118,9 +137,95 @@ def list_issue():
         db.close()
         
 
+
+@issue_app.command("update")
+def update_issue(
+    issue_id: int = typer.Option(..., "--id", help="Issue ID"),
+    title: Optional[str] = typer.Option(None, "--title"),
+    description: Optional[str] = typer.Option(None, "--description"),
+    log: Optional[str] = typer.Option(None, "--log", help="Log text, or '-' to read from stdin"),
+    summary: Optional[str] = typer.Option(None, "--summary"),
+    priority: Optional[str] = typer.Option(None, "--priority", help="low | medium | high"),
+    status: Optional[str] = typer.Option(None, "--status", help="open | in_progress | closed"),
+    assignee: Optional[str] = typer.Option(None, "--assignee"),
+):
+    #Update provided changes 
+    db = SessionLocal()
+    try:
+        issue = db.get(Issue, issue_id)
+        if not issue:
+            typer.echo(f"Issue {issue_id} not found")
+            raise typer.Exit(code=1)
+
+        # stdin for logs
+        if log == "-":
+            import sys
+            log = sys.stdin.read()
+
+        changed = False
+
+        if title is not None:
+            issue.title = title; changed = True
+        if description is not None:
+            issue.description = description; changed = True
+        if log is not None:
+            issue.log = log; changed = True
+        if summary is not None:
+            issue.summary = summary; changed = True
+        if priority is not None:
+            issue.priority = priority.lower(); changed = True
+        if status is not None:
+            issue.status = status.lower(); changed = True
+        if assignee is not None:
+            issue.assignee = assignee; changed = True
+
+        if not changed:
+            typer.echo("No fields provided to update.")
+            raise typer.Exit(code=1)
+
+        db.commit()
+        db.refresh(issue)
+        typer.echo(f"Issue {issue.issue_id} updated")
+    finally:
+        db.close()
+
+        
+@project_app.command("update")
+def update_project(
+    project_id: int = typer.Option(..., "--id", help="Project ID"),
+    name: Optional[str] = typer.Option(None, "--name", help="New project name"),
+):
+
+    db = SessionLocal()
+    try:
+        project = db.get(Project, project_id)
+        if not project:
+            typer.echo(f"Project {project_id} not found")
+            raise typer.Exit(code=1)
+
+        changed = False
+        if name is not None:
+            #No projects with same name
+            exists = db.query(Project).filter(Project.name == name, Project.project_id != project_id).first()
+            if exists:
+                typer.echo(f"Another project already uses the name '{name}'")
+                raise typer.Exit(code=1)
+            project.name = name
+            changed = True
+
+        if not changed:
+            typer.echo("No fields provided to update.")
+            raise typer.Exit(code=1)
+
+        db.commit()
+        db.refresh(project)
+        typer.echo(f"Updated project {project.project_id}: {project.name}")
+    finally:
+        db.close()
+
+
+
 #LIST WITH FILTERS
-#FUTURE DEVELOPMENT
 
 
-if __name__ == "__main__":
-    cli_app()
+

@@ -1,13 +1,17 @@
 from typing import Iterable
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from core.models import Issue
+from core.models import Issue, Project
 from core.schemas import IssueCreate, IssueUpdate
 from core import models
+from .exceptions import NotFound
 
 
 #CREATE ISSUE
 def create_issue(db:Session, data: IssueCreate) -> Issue:
+    project = db.query(Project).filter_by(project_id=data.project_id).first()
+    if not project:
+        raise NotFound(f"Project {data.project_id} not found")
     issue = Issue(
         project_id=data.project_id,
         title=data.title,
@@ -24,17 +28,20 @@ def create_issue(db:Session, data: IssueCreate) -> Issue:
     db.refresh(issue)
     return issue
     
+        
+        
 #GET ISSUE
 def get_issue(db: Session, issue_id: int) -> models.Issue | None:
     #Get issue by ID
-    return db.query(models.Issue).filter(models.Issue.issue_id == issue_id).first()
+    issue = db.query(models.Issue).filter(models.Issue.issue_id == issue_id).first()
+    if not issue:
+        raise NotFound(f"Issue {issue_id} not found")
+    return issue
     
 #DELETE ISSUE
 def delete_issue(db:Session, issue_id: int) -> bool:
     issue = get_issue(db, issue_id)
-    if not issue:
-        return False
-    
+    #if not issue will raise > NotFound
     db.delete(issue)
     db.commit()
     return True
@@ -42,11 +49,8 @@ def delete_issue(db:Session, issue_id: int) -> bool:
 
 #UPDATE ISSUE
 def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Issue | None:
-    """Update an issue if it exists."""
     issue = get_issue(db, issue_id)
-    if not issue:
-        return None
-
+    #if no issue > not found
     data = issue_in.model_dump(exclude_unset=True)
     if "tags" in data and data["tags"] is not None:
         tag_names = data.pop("tags")
@@ -68,7 +72,6 @@ def list_issues(db: Session, skip: int = 0, limit: int = 100) -> list[models.Iss
     return db.query(models.Issue).offset(skip).limit(limit).all()
 '''
 
-from sqlalchemy import or_
 
 def list_issues(
     db: Session,
@@ -78,8 +81,16 @@ def list_issues(
     priority: str | None = None,
     status: str | None = None,
     title: str | None = None,
+    project_id: int | None = None,
 ) -> list[models.Issue]:
+    if project_id is not None:
+        # make sure project exists
+        project = db.query(models.Project).filter(models.Project.project_id == project_id).first()
+        if not project:
+            raise NotFound(f"Project {project_id} not found")
     query = db.query(models.Issue)
+    if project_id:
+        query = query.filter(models.Issue.project_id == project_id)
     if assignee:
         query = query.filter(models.Issue.assignee == assignee)
     if priority:
@@ -87,9 +98,9 @@ def list_issues(
     if status:
         query = query.filter(models.Issue.status == status)
     if title:
-        query = query.filter(models.Issue.title == title)  
-
+        query = query.filter(models.Issue.title == title)
     return query.offset(skip).limit(limit).all()
+
 
 
      

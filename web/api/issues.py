@@ -7,6 +7,7 @@ from core import schemas
 from core import models
 from core.db import get_db
 from core.repos import issues as repo_issues
+from core.repos.exceptions import NotFound
 
 router = APIRouter(prefix="/issues", tags=["issues"])
 
@@ -17,10 +18,11 @@ def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
 
 @router.get("/{issue_id}", response_model=schemas.IssueOut)
 def get_issue(issue_id: int, db: Session = Depends(get_db)):
-    issue = repo_issues.get_issue(db, issue_id)
-    if not issue:
-        raise HTTPException(status_code=404, detail="Issue not found")
-    return issue
+    try:
+        return repo_issues.get_issue(db, issue_id)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+        
 
 '''
 @router.get("/", response_model=list[schemas.IssueOut])
@@ -44,11 +46,11 @@ def list_issues(
 
 @router.put("/{issue_id}", response_model=schemas.IssueOut)
 def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends(get_db)):
-    issue = repo_issues.update_issue(db, issue_id, data)
-    if not issue:
-        raise HTTPException(status_code=404, detail="Issue not found")
-    return issue
-
+    try:
+        return repo_issues.update_issue(db, issue_id, data)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+        
 
 @router.delete("/{issue_id}", response_model=bool)
 def delete_issue(issue_id: int, db: Session = Depends(get_db)):

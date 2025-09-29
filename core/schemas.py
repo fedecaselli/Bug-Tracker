@@ -7,7 +7,7 @@ Update = optional fields.
 Out = what API returns.
 '''
 from typing import Optional, List
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field, constr, field_validator
 from datetime import datetime
 
 # TAG SCHEMAS
@@ -51,20 +51,33 @@ class IssueBase(BaseModel):
     status: constr(pattern=r"^(open|in_progress|closed)$") = "open"
     assignee: Optional[str] = None
 
+
+    @field_validator("priority")
+    @classmethod
+    def normalize_priority(cls, priority):
+        if priority is None: return priority
+        priority = priority.lower()
+        if priority not in {"low","medium","high"}:
+            raise ValueError("priority must be low|medium|high")
+        return priority
+
+    @field_validator("status")
+    @classmethod
+    def normalize_status(cls, status):
+        if status is None: 
+            return status
+        status = status.lower()
+        if status not in {"open","in_progress","closed"}:
+            raise ValueError("status must be open|in_progress|closed")
+        return status
+    
 # Inherit base fields automatically
 class IssueCreate(IssueBase):
     project_id: int
     tag_ids: Optional[List[str]] = Field(default_factory=list) 
     
 # OPTIONALS > MODIFY 1 OR MORE 
-class IssueUpdate(BaseModel):
-    title: Optional[constr(min_length=1, max_length=100)] = None
-    description: Optional[str] = None
-    log: Optional[str] = None
-    summary: Optional[str] = None
-    priority: Optional[constr(pattern=r"^(low|medium|high)$")] = None
-    status: Optional[constr(pattern=r"^(open|in_progress|closed)$")] = None
-    assignee: Optional[str] = None
+class IssueUpdate(IssueBase):
     tags: Optional[List[str]] = None
     
     

@@ -123,11 +123,24 @@ def delete_issue(issue_id: int):
 @issue_app.command("list")
 def list_issue(
     limit: int = typer.Option(20, "--limit", help="Max issues to show"),
-    offset: int = typer.Option(0, "--offset", help="Skip first N issues")
+    offset: int = typer.Option(0, "--offset", help="Skip first N issues"),
+    title: Optional[str] = typer.Option(None, "--title", help="Filter by issue name"),
+    priority: Optional[str] = typer.Option(None, "--priority", help="Filter by priority (low | medium | high)"),
+    status: Optional[str] = typer.Option(None, "--status", help="Filter by status (open | in_progress | closed)"),
+    assignee: Optional[str] = typer.Option(None, "--assignee", help="Filter by assignee"),
 ):
     db = SessionLocal()
     try:
-        rows = db.query(Issue).offset(offset).limit(limit).all()
+        query = db.query(Issue)
+        if title is not None:
+            query = query.filter(Issue.title == title)
+        if priority is not None:
+            query = query.filter(Issue.priority == priority.lower())
+        if status is not None:
+            query = query.filter(Issue.status == status.lower())
+        if assignee is not None:
+            query = query.filter(Issue.assignee == assignee)
+        rows = query.offset(offset).limit(limit).all()
         if not rows:
             typer.echo("No registered issues")
             return 
@@ -224,8 +237,6 @@ def update_project(
         db.close()
 
 
-
-#LIST WITH FILTERS
 
 
 

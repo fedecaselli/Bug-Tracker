@@ -8,9 +8,7 @@ from core import models
 
 #CREATE PROJECT
 def create_project(db:Session, data: ProjectCreate) -> Project:
-    project = Project(
-        name = data.name
-    )
+    project = Project(name = data.name)
     db.add(project)
     db.commit()
     db.refresh(project)

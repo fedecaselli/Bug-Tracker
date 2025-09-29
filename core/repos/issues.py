@@ -63,8 +63,34 @@ def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Is
     
     
 #LIST
+'''
 def list_issues(db: Session, skip: int = 0, limit: int = 100) -> list[models.Issue]:
     return db.query(models.Issue).offset(skip).limit(limit).all()
+'''
+
+from sqlalchemy import or_
+
+def list_issues(
+    db: Session,
+    skip: int = 0,
+    limit: int = 100,
+    assignee: str | None = None,
+    priority: str | None = None,
+    status: str | None = None,
+    title: str | None = None,
+) -> list[models.Issue]:
+    query = db.query(models.Issue)
+    if assignee:
+        query = query.filter(models.Issue.assignee == assignee)
+    if priority:
+        query = query.filter(models.Issue.priority == priority)
+    if status:
+        query = query.filter(models.Issue.status == status)
+    if title:
+        query = query.filter(models.Issue.title == title)  
+
+    return query.offset(skip).limit(limit).all()
+
 
      
 

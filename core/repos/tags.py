@@ -114,29 +114,46 @@ def rename_tags_everywhere(db: Session, old_name: str, new_name: str) -> None:
     new_normalized = _normalize_name(new_name)
     
     if not old_normalized or not new_normalized:
-        raise ValueError("Tag names cannot be empty")
+        raise ValueError("Tag names cannot be empty after normalization")
     
     if old_normalized == new_normalized:
-        return  # No-op if same name
+        return  # No-op if names are the same after normalization
     
-    # Find old tag
-    old_tag = db.query(Tag).filter(Tag.name == old_normalized).first()
+    # Get the old tag
+    old_tag = get_tag_by_name(db, old_normalized)
     if not old_tag:
         raise NotFound(f"Tag '{old_name}' not found")
     
     # Check if new tag already exists
-    new_tag = db.query(Tag).filter(Tag.name == new_normalized).first()
+    new_tag = get_tag_by_name(db, new_normalized)
     
     if new_tag:
-        # Merge: update issue_tags to point from old.tag_id → new.tag_id
+        # Merge tags: move all issues from old_tag to new_tag
+        # First, get all issues that have the old tag but not the new tag
+        from sqlalchemy import text
+        
+        # Remove issues that already have both tags to avoid constraint violation
+        db.execute(
+            text("""
+                DELETE FROM issue_tags 
+                WHERE tag_id = :old_tag_id 
+                AND issue_id IN (
+                    SELECT issue_id FROM issue_tags WHERE tag_id = :new_tag_id
+                )
+            """),
+            {"old_tag_id": old_tag.tag_id, "new_tag_id": new_tag.tag_id}
+        )
+        
+        # Update remaining associations to point to new tag
         db.execute(
             text("UPDATE issue_tags SET tag_id = :new_tag_id WHERE tag_id = :old_tag_id"),
             {"new_tag_id": new_tag.tag_id, "old_tag_id": old_tag.tag_id}
         )
+        
         # Delete old tag
         db.delete(old_tag)
     else:
-        # Update old tag's name
+        # Simply rename the old tag
         old_tag.name = new_normalized
     
     db.commit()
@@ -186,3 +203,4 @@ def get_tag_usage_stats(db: Session) -> list[dict]:
         }
         for result in results
     ]
+    

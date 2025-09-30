@@ -487,13 +487,21 @@ class TestGetTagUsageStats:
         issue2 = create_test_issue(db, project, "Issue 2")
         issue3 = create_test_issue(db, project, "Issue 3")
         
-        update_tags(db, issue1, ["frontend", "bug"])
-        update_tags(db, issue2, ["frontend", "enhancement"])
-        update_tags(db, issue3, ["backend"])
+        update_tags(db, issue1, ["frontend", "bug"])        # Creates: frontend, bug
+        update_tags(db, issue2, ["frontend", "enhancement"]) # Creates: enhancement (reuses frontend)
+        update_tags(db, issue3, ["backend"])                # Creates: backend
         db.commit()
         
         stats = get_tag_usage_stats(db)
-        assert len(stats) == 3
+        
+        # Should return 4 distinct tags with their usage counts
+        assert len(stats) == 4  # 4 unique tags in database
+        
+        stats_dict = {stat["name"]: stat["issue_count"] for stat in stats}
+        assert stats_dict["frontend"] == 2      # Tag used by 2 issues
+        assert stats_dict["bug"] == 1           # Tag used by 1 issue  
+        assert stats_dict["enhancement"] == 1   # Tag used by 1 issue
+        assert stats_dict["backend"] == 1       # Tag used by 1 issue
         
         # Convert to dict for easier checking
         stats_dict = {stat["name"]: stat["issue_count"] for stat in stats}

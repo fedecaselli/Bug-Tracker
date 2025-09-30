@@ -12,3 +12,4 @@ venv/
 .env
 
 bugtracker.db
+test.db

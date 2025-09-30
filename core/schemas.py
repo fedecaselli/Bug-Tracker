@@ -10,8 +10,7 @@ from typing import Optional, List
 from pydantic import BaseModel, Field, constr, field_validator
 from datetime import datetime
 
-'''
-Tags will not be created directly but through ISSUES
+
 # TAG SCHEMAS
 class TagBase(BaseModel):
     name: constr(min_length=1, max_length=100)
@@ -25,7 +24,7 @@ class TagUpdate(BaseModel):
 class TagOut(BaseModel):
     tag_id: int
     model_config = {"from_attributes": True}   
-'''
+
     
 # PROJECT SCHEMAS 
 class ProjectBase(BaseModel):

@@ -20,6 +20,16 @@ from core.repos.issues import (
     get_issue as repo_get_issue,
     list_issues as repo_list_issues,
 )
+
+from core.repos.tags import (
+    list_tags as repo_list_tags,
+    delete_tag as repo_delete_tag,
+    remove_tags_with_no_issue as repo_remove_tags_with_no_issue,
+    rename_tags_everywhere as repo_rename_tags_everywhere,
+    get_tag_usage_stats as repo_get_tag_usage_stats,
+)
+
+
 from core.repos.exceptions import AlreadyExists, NotFound
 
 # cli/session.py
@@ -38,9 +48,11 @@ def session_scope():
 cli_app = typer.Typer()
 issue_app = typer.Typer(help="Issues")
 project_app = typer.Typer(help="Projects")
+tag_app = typer.Typer(help="Tags")
 
 cli_app.add_typer(issue_app, name ="issues")
 cli_app.add_typer(project_app, name="projects")
+cli_app.add_typer(tag_app,name="tags")
 
 #PROJECT 
 #Add project
@@ -115,16 +127,20 @@ def update_project(#Update with old name (name is unique)
 
 @issue_app.command("create")
 def create_issue(project_id: int = typer.Option(..., "--project", help="Project id"), 
-                 title: str = typer.Option(..., "--title"),
-                 description: Optional[str] = typer.Option(None, "--description"),
-                 log: Optional[str] = typer.Option(None, "--log", help="Log text, or '-' to read from stdin"),
-                 summary: Optional[str] = typer.Option(None, "--summary"),
-                 priority: str = typer.Option(...,"--priority", help="low | medium | high"),
-                 status: str = typer.Option(..., "--status", help="open | in_progress | closed"),
-                 assignee: Optional[str] = typer.Option(None,"--assignee", help="Person responsible for resolving the issue")):
+                title: str = typer.Option(..., "--title"),
+                description: Optional[str] = typer.Option(None, "--description"),
+                log: Optional[str] = typer.Option(None, "--log", help="Log text, or '-' to read from stdin"),
+                summary: Optional[str] = typer.Option(None, "--summary"),
+                priority: str = typer.Option(...,"--priority", help="low | medium | high"),
+                status: str = typer.Option(..., "--status", help="open | in_progress | closed"),
+                assignee: Optional[str] = typer.Option(None,"--assignee", help="Person responsible for resolving the issue"),
+                tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated list of tags")):
     with session_scope() as db: 
         if log == "-":
             log = sys.stdin.read()
+        tag_names = []
+        if tags:
+            tag_names = [tag.strip() for tag in tags.split(",") if tag.strip()]
         try:  
             issue = repo_create_issue(db, IssueCreate(      
                                 project_id=project_id,
@@ -135,6 +151,7 @@ def create_issue(project_id: int = typer.Option(..., "--project", help="Project 
                                 priority=priority,
                                 status=status,
                                 assignee=assignee,
+                                tag_names=tag_names,
                                 ), )  
             typer.echo(f"Issue {issue.issue_id} successfully created with title {issue.title}")
         except NotFound as e:
@@ -166,23 +183,29 @@ def list_issue(
     priority: Optional[str] = typer.Option(None, "--priority", help="Filter by priority (low | medium | high)"),
     status: Optional[str] = typer.Option(None, "--status", help="Filter by status (open | in_progress | closed)"),
     assignee: Optional[str] = typer.Option(None, "--assignee", help="Filter by assignee"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Filter by tags (comma-separated) - has any of the specified tags"),
+    tags_match_all: bool = typer.Option(True, "--tags-match-all", help="Filter by tags (comma-separated) - has all specified tags")
 ):
     with session_scope() as db: 
+        tag_filter = None
+        if tags:
+            tag_filter = [tag.strip() for tag in tags.split(",") if tag.strip()]
         rows = repo_list_issues(db, 
                                 skip=skip, 
                                 limit=limit, 
                                 assignee=assignee, 
                                 priority=priority, 
                                 status=status,
-                                title=title)
+                                title=title,
+                                tags=tag_filter,
+                                tags_match_all=tags_match_all)
         if not rows:
             typer.echo("No registered issues")
             return 
         for issue in rows:
-            typer.echo(f"Issue id: {issue.issue_id:} \ttitle: {issue.title} \tdescription: {issue.description} \tlog: {issue.log} \tsummary: {issue.summary} \tpriority: {issue.priority}\tstatus: {issue.status} \tassignee: {issue.assignee}")
-#ADD TAGS LATER
-
-        
+            tag_names = [tag.name for tag in issue.tags]if issue.tags else []
+            tags_str = f"{', '.join(tag_names)}" if tag_names else "none"
+            typer.echo(f"Issue id: {issue.issue_id:} \ttitle: {issue.title} \tdescription: {issue.description} \tlog: {issue.log} \tsummary: {issue.summary} \tpriority: {issue.priority}\tstatus: {issue.status} \tassignee: {issue.assignee} \ttags: {tags_str}")
 
 
 @issue_app.command("update")
@@ -195,6 +218,7 @@ def update_issue(
     priority: Optional[str] = typer.Option(None, "--priority", help="low | medium | high"),
     status: Optional[str] = typer.Option(None, "--status", help="open | in_progress | closed"),
     assignee: Optional[str] = typer.Option(None, "--assignee"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="comma-separated list of new tags to replace old ones")
 ):
     #Update provided changes 
     with session_scope() as db: 
@@ -219,13 +243,18 @@ def update_issue(
                 update_data["status"] = status
             if assignee is not None:
                 update_data["assignee"] = assignee
+            if tags is not None: 
+                tag_names = [tag.strip() for tag in tags.split(",") if tag.strip()]
+                update_data["tag_names"] = tag_names
             
             if not update_data:
                 typer.echo("No fields provided to update")
                 raise typer.Exit(code=1)
                 
+                
             data = IssueUpdate(**update_data)
             issue = repo_update_issue(db, issue_id, data)
+                
             typer.echo(f"Issue {issue.issue_id} updated")
         except NotFound as e:
             typer.echo(str(e))
@@ -238,6 +267,40 @@ def update_issue(
 
 
 
-
-
+#Renaming globally
+@tag_app.command("rename")
+def rename_tag(
+    old_name: str = typer.Option(..., "--old-name", help="Current tag name"),
+    new_name: str = typer.Option(..., "--new-name", help="New tag name")
+):
+    """Rename a tag globally (affects ALL issues with this tag)."""
+    with session_scope() as db:
+        try:
+            repo_rename_tags_everywhere(db, old_name, new_name)
+            typer.echo(f"Tag '{old_name}' renamed to '{new_name}' across all issues")
+        except NotFound as e:
+            typer.echo(f"Error: {e}")
+            raise typer.Exit(code=1)
+        
+#deleting globally
+@tag_app.command("delete")
+def delete_tag(tag_id: int = typer.Option(..., "--id", help="Tag ID")):
+    """Delete a tag (removes it from ALL issues)."""
+    with session_scope() as db:
+        try:
+            if repo_delete_tag(db, tag_id):
+                typer.echo(f"Tag {tag_id} deleted from all issues")
+        except NotFound as e:
+            typer.echo(f"Error: {e}")
+            raise typer.Exit(code=1)
+        
+#Deleting all tags with no issue ID associated to them 
+@tag_app.command("cleanup")
+def cleanup_tags():
+    """Remove unused tags."""
+    with session_scope() as db:
+        count = repo_remove_tags_with_no_issue(db)
+        typer.echo(f"Cleaned up {count} unused tags")
+        
+        
 

@@ -66,7 +66,7 @@ the column only updates when an SQL UPDATE command happens (via SQLAlchemy).
     
 class Project(Base): 
     __tablename__ = 'projects' 
-    project_id = Column(Integer, primary_key=True, Index=True)
+    project_id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False, unique=True)
     created_at = Column(DateTime, server_default=func.now())
     
@@ -82,7 +82,7 @@ class Project(Base):
 class Tag(Base):
     __tablename__ = 'tags'
     tag_id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False, unique=True, Index=True) 
+    name = Column(String(100), nullable=False, unique=True, index=True) 
     
 
     issues = relationship("Issue", secondary=issue_tags, back_populates="tags")

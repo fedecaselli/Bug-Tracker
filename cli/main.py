@@ -183,8 +183,8 @@ def list_issue(
     priority: Optional[str] = typer.Option(None, "--priority", help="Filter by priority (low | medium | high)"),
     status: Optional[str] = typer.Option(None, "--status", help="Filter by status (open | in_progress | closed)"),
     assignee: Optional[str] = typer.Option(None, "--assignee", help="Filter by assignee"),
-    tags: Optional[str] = typer.Option(None, "--tags", help="Filter by tags (comma-separated) - has any of the specified tags"),
-    tags_match_all: bool = typer.Option(True, "--tags-match-all", help="Filter by tags (comma-separated) - has all specified tags")
+    tags: Optional[str] = typer.Option(None, "--tags", help="Enter comma-separated tags to match (eg. frontend,backend)"),
+    tags_match_all: bool = typer.Option(True, "--tags-match-all/--tags-match-any", help="Filter by match all (issue with ALL specified tags - default option) or match any(filter with any of the specified tags)")
 ):
     with session_scope() as db: 
         tag_filter = None
@@ -203,7 +203,7 @@ def list_issue(
             typer.echo("No registered issues")
             return 
         for issue in rows:
-            tag_names = [tag.name for tag in issue.tags]if issue.tags else []
+            tag_names = [tag.name for tag in issue.tags] if issue.tags else []
             tags_str = f"{', '.join(tag_names)}" if tag_names else "none"
             typer.echo(f"Issue id: {issue.issue_id:} \ttitle: {issue.title} \tdescription: {issue.description} \tlog: {issue.log} \tsummary: {issue.summary} \tpriority: {issue.priority}\tstatus: {issue.status} \tassignee: {issue.assignee} \ttags: {tags_str}")
 
@@ -301,6 +301,35 @@ def cleanup_tags():
     with session_scope() as db:
         count = repo_remove_tags_with_no_issue(db)
         typer.echo(f"Cleaned up {count} unused tags")
-        
-        
+
+@tag_app.command("list")
+def list_tags(
+    limit: int = typer.Option(100, "--limit", help="Max tags to show"),
+    skip: int = typer.Option(0, "--skip", help="Skip first N tags"),
+    stats: bool = typer.Option(False, "--stats", help="Show usage statistics")
+):
+    """List all tags with optional usage statistics."""
+    with session_scope() as db:
+        if stats:
+            # Show tag usage statistics
+            usage_stats = repo_get_tag_usage_stats(db)
+            if not usage_stats:
+                typer.echo("No tags found")
+                return
+            typer.echo("Tag Usage Statistics:")
+            typer.echo("Tag Name\t\tUsage Count")
+            typer.echo("-" * 30)
+            for stat in usage_stats:
+                typer.echo(f"{stat['tag_name']}\t\t{stat['usage_count']}")
+        else:
+            # Show simple tag list
+            tags = repo_list_tags(db, skip=skip, limit=limit)
+            if not tags:
+                typer.echo("No tags found")
+                return
+            typer.echo("Available Tags:")
+            for tag in tags:
+                typer.echo(f"ID: {tag.tag_id}\tName: {tag.name}")
+
+
 

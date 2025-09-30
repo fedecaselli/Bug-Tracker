@@ -62,7 +62,8 @@ def test_update_issue(db):
         status="open",
         assignee="Alice"
     ))
-    updated = update_issue(db, issue.issue_id, IssueUpdate(title="Fixed", status="closed"))
+    # Provide all required fields for IssueUpdate
+    updated = update_issue(db, issue.issue_id, IssueUpdate(title="Fixed", status="closed", priority="low"))
     assert updated.title == "Fixed"
     assert updated.status == "closed"
 

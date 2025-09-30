@@ -2,7 +2,7 @@ from core.db import SessionLocal
 import typer
 from typing import Optional
 import sys
-
+from pydantic import ValidationError
 
 from core.schemas import ProjectCreate, ProjectUpdate, IssueCreate, IssueUpdate
 from core.repos.projects import (
@@ -86,7 +86,7 @@ def list_project():
             typer.echo("No projects")
             return
         for project in rows:
-            typer.echo(f"Project id:{project.project_id} \tname: {project.name} \tcreated at:{project.created_at}")
+            typer.echo(f"Project id: {project.project_id} \tname: {project.name} \tcreated at: {project.created_at}")
 
         
 #Update projects
@@ -106,6 +106,9 @@ def update_project(#Update with old name (name is unique)
             raise typer.Exit(code=1)
         except NotFound as e:
             typer.echo(str(e))
+            raise typer.Exit(code=1)
+        except ValidationError as e:
+            typer.echo(f"Error: {e}")
             raise typer.Exit(code=1)
     
 #ISSUE
@@ -133,10 +136,12 @@ def create_issue(project_id: int = typer.Option(..., "--project", help="Project 
                                 status=status,
                                 assignee=assignee,
                                 ), )  
-            #ADD TAGS
             typer.echo(f"Issue {issue.issue_id} successfully created with title {issue.title}")
         except NotFound as e:
             typer.echo(str(e))
+            raise typer.Exit(code=1)
+        except ValidationError as e:
+            typer.echo(f"Error: {e}")
             raise typer.Exit(code=1)
 
         
@@ -198,24 +203,39 @@ def update_issue(
             import sys
             log = sys.stdin.read()
         try:
-            data = IssueUpdate(title=title,
-                description=description,
-                log=log,
-                summary=summary,
-                priority=priority,
-                status=status,
-                assignee=assignee)
-            if not any([title, description, log, summary, priority, status, assignee]):
+            # Build update dict with only provided fields
+            update_data = {}
+            if title is not None:
+                update_data["title"] = title
+            if description is not None:
+                update_data["description"] = description
+            if log is not None:
+                update_data["log"] = log
+            if summary is not None:
+                update_data["summary"] = summary
+            if priority is not None:
+                update_data["priority"] = priority
+            if status is not None:
+                update_data["status"] = status
+            if assignee is not None:
+                update_data["assignee"] = assignee
+            
+            if not update_data:
                 typer.echo("No fields provided to update")
                 raise typer.Exit(code=1)
+                
+            data = IssueUpdate(**update_data)
             issue = repo_update_issue(db, issue_id, data)
             typer.echo(f"Issue {issue.issue_id} updated")
         except NotFound as e:
             typer.echo(str(e))
             raise typer.Exit(code=1)
+        except ValidationError as e:
+            typer.echo(f"Error: {e}")
+            raise typer.Exit(code=1)
 
 
-    
+
 
 
 

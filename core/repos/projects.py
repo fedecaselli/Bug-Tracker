@@ -8,10 +8,10 @@ from .exceptions import AlreadyExists, NotFound
 
 
 #CREATE PROJECT
-def create_project(db:Session, data: ProjectCreate) -> Project:
+def create_project(db: Session, data: ProjectCreate) -> Project:
     if db.query(Project).filter_by(name=data.name).first():
         raise AlreadyExists(f"Project {data.name} already exists")
-    project = Project(name = data.name)
+    project = Project(name=data.name)
     db.add(project)
     db.commit()
     db.refresh(project)
@@ -41,6 +41,10 @@ def get_project_by_name(db: Session, name: str) -> models.Project:
     if not project:
         raise NotFound(f"Project with name '{name}' not found")
     return project
+
+#name -> id and then id -> project would be slower.
+#name uniqueness makes the lookup "equivalent" to ID lookup
+#indexing on the name column in the model gives faster lookup
 
 #UPDATE
 def update_project(db: Session, project_id: int, project_in: ProjectUpdate) -> models.Project:

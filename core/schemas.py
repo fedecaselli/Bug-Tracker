@@ -10,6 +10,8 @@ from typing import Optional, List
 from pydantic import BaseModel, Field, constr, field_validator
 from datetime import datetime
 
+'''
+Tags will not be created directly but through ISSUES
 # TAG SCHEMAS
 class TagBase(BaseModel):
     name: constr(min_length=1, max_length=100)
@@ -18,13 +20,12 @@ class TagCreate(TagBase):
     pass  # name inherited from Base
 
 class TagUpdate(BaseModel):
-    name: Optional[constr(min_length=1, max_length=200)] = None
+    name: Optional[constr(min_length=1, max_length=100)] = None
     
 class TagOut(BaseModel):
     tag_id: int
-    model_config = {"from_attributes": True}  # version 2.11
-    
-    
+    model_config = {"from_attributes": True}   
+'''
     
 # PROJECT SCHEMAS 
 class ProjectBase(BaseModel):
@@ -36,7 +37,7 @@ class ProjectCreate(ProjectBase):
 class ProjectUpdate(BaseModel):
     name: Optional[constr(min_length=1, max_length=200)] = None
     
-class ProjectOut(BaseModel):
+class ProjectOut(ProjectBase):
     project_id: int
     created_at: datetime
     model_config = {"from_attributes": True}
@@ -74,11 +75,38 @@ class IssueBase(BaseModel):
 # Inherit base fields automatically
 class IssueCreate(IssueBase):
     project_id: int
-    tag_ids: Optional[List[str]] = Field(default_factory=list) 
+    tag_names: Optional[List[str]] = Field(default_factory=list)  #List of strings / empty list
     
 # OPTIONALS > MODIFY 1 OR MORE 
-class IssueUpdate(IssueBase):
-    tags: Optional[List[str]] = None
+class IssueUpdate(BaseModel): #cannot inherit from issuebase bc they are optional fields
+    title: Optional[constr(min_length=1, max_length=100)] = None
+    description: Optional[str] = None
+    log: Optional[str] = None
+    summary: Optional[str] = None
+    priority: Optional[constr(pattern=r"^(low|medium|high)$")] = None
+    status: Optional[constr(pattern=r"^(open|in_progress|closed)$")] = None
+    assignee: Optional[str] = None
+    tag_names: Optional[List[str]] = None #None = no change in the tags.
+
+    @field_validator("priority")
+    @classmethod
+    def normalize_priority(cls, priority):
+        if priority is None: 
+            return priority
+        priority = priority.lower()
+        if priority not in {"low","medium","high"}:
+            raise ValueError("priority must be low|medium|high")
+        return priority
+
+    @field_validator("status")
+    @classmethod
+    def normalize_status(cls, status):
+        if status is None: 
+            return status
+        status = status.lower()
+        if status not in {"open","in_progress","closed"}:
+            raise ValueError("status must be open|in_progress|closed")
+        return status
     
     
 class IssueOut(IssueBase):

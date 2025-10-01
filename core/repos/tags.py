@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text
 from core.models import Tag, Issue
-from core.schemas import TagUpdate
+#from core.schemas import TagUpdate
 from core import models
 from .exceptions import AlreadyExists, NotFound
 

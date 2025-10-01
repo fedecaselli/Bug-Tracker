@@ -126,7 +126,8 @@ def update_project(#Update with old name (name is unique)
 #ISSUE
 
 @issue_app.command("create")
-def create_issue(project_id: int = typer.Option(..., "--project", help="Project id"), 
+def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", help="Project id - Note: either id or name required"), 
+                project_name: Optional[str] = typer.Option(None, "--project-name", help="Project name - Note: either id or name required"),
                 title: str = typer.Option(..., "--title"),
                 description: Optional[str] = typer.Option(None, "--description"),
                 log: Optional[str] = typer.Option(None, "--log", help="Log text, or '-' to read from stdin"),
@@ -141,9 +142,41 @@ def create_issue(project_id: int = typer.Option(..., "--project", help="Project 
         tag_names = []
         if tags:
             tag_names = [tag.strip() for tag in tags.split(",") if tag.strip()]
+
+        if not project_name and not project_id:
+            typer.echo("Error: provide either --project-id or --project-name")
+            raise typer.Exit(code=1)
+        
+        if project_name and project_id:
+            try:
+                project_by_name = repo_get_project_by_name(db, project_name)
+                if project_by_name.project_id != project_id:
+                    typer.echo("Project name and ID do not match. Please provide either name or id.")
+                    raise typer.Exit(code=1)
+                final_project_id = project_id
+            except NotFound as e:
+                typer.echo(str(e))
+                raise typer.Exit(code=1)
+            
+        elif project_name:
+            try:
+                project_obj = repo_get_project_by_name(db, project_name)
+                final_project_id = project_obj.project_id
+            except NotFound as e:
+                typer.echo(str(e))
+                raise typer.Exit(code=1)
+        elif project_id:
+            try:
+                repo_get_project(db,project_id)
+                final_project_id = project_id
+            except NotFound as e:
+                typer.echo(str(e))
+                raise typer.Exit(code=1)
+        
+        
         try:  
             issue = repo_create_issue(db, IssueCreate(      
-                                project_id=project_id,
+                                project_id=final_project_id,
                                 title=title,
                                 description=description,
                                 log=log,
@@ -153,7 +186,7 @@ def create_issue(project_id: int = typer.Option(..., "--project", help="Project 
                                 assignee=assignee,
                                 tag_names=tag_names,
                                 ), )  
-            typer.echo(f"Issue {issue.issue_id} successfully created with title {issue.title}")
+            typer.echo(f"Issue {issue.issue_id} successfully created with title {issue.title} in project {final_project_id}")
         except NotFound as e:
             typer.echo(str(e))
             raise typer.Exit(code=1)
@@ -183,6 +216,8 @@ def list_issue(
     priority: Optional[str] = typer.Option(None, "--priority", help="Filter by priority (low | medium | high)"),
     status: Optional[str] = typer.Option(None, "--status", help="Filter by status (open | in_progress | closed)"),
     assignee: Optional[str] = typer.Option(None, "--assignee", help="Filter by assignee"),
+    project_id: Optional[int] = typer.Option(None, "--project-id", help="Filter by project id"),
+    project_name: Optional[str] = typer.Option(None, "--project-name", help="Filter by project name"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Enter comma-separated tags to match (eg. frontend,backend)"),
     tags_match_all: bool = typer.Option(True, "--tags-match-all/--tags-match-any", help="Filter by match all (issue with ALL specified tags - default option) or match any(filter with any of the specified tags)")
 ):
@@ -190,6 +225,37 @@ def list_issue(
         tag_filter = None
         if tags:
             tag_filter = [tag.strip() for tag in tags.split(",") if tag.strip()]
+        
+        final_project_id = None
+        
+        if project_name and project_id:
+            try:
+                project_by_name = repo_get_project_by_name(db, project_name)
+                if project_by_name.project_id != project_id:
+                    typer.echo("Project name and ID do not match. Please provide either name or id.")
+                    raise typer.Exit(code=1)
+                final_project_id = project_id
+            except NotFound as e:
+                typer.echo(str(e))
+                raise typer.Exit(code=1)
+
+        elif project_name:
+            try:
+                project_obj = repo_get_project_by_name(db, project_name)
+                final_project_id = project_obj.project_id
+            except NotFound as e:
+                typer.echo(str(e))
+                raise typer.Exit(code=1)
+        elif project_id:
+            try:
+                repo_get_project(db,project_id)
+                final_project_id = project_id
+            except NotFound as e:
+                typer.echo(str(e))
+                raise typer.Exit(code=1)
+        
+        
+        
         rows = repo_list_issues(db, 
                                 skip=skip, 
                                 limit=limit, 
@@ -197,6 +263,7 @@ def list_issue(
                                 priority=priority, 
                                 status=status,
                                 title=title,
+                                project_id=final_project_id,
                                 tags=tag_filter,
                                 tags_match_all=tags_match_all)
         if not rows:
@@ -204,7 +271,7 @@ def list_issue(
             return 
         for issue in rows:
             tag_names = [tag.name for tag in issue.tags] if issue.tags else []
-            tags_str = f"{', '.join(tag_names)}" if tag_names else "none"
+            tags_str = f"{', '.join(tag_names)}" if tag_names else "none" # ADD PROJECT ID EN PRINT 
             typer.echo(f"Issue id: {issue.issue_id:} \ttitle: {issue.title} \tdescription: {issue.description} \tlog: {issue.log} \tsummary: {issue.summary} \tpriority: {issue.priority}\tstatus: {issue.status} \tassignee: {issue.assignee} \ttags: {tags_str}")
 
 

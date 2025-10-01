@@ -14,13 +14,14 @@ from datetime import datetime
 # TAG SCHEMAS
 class TagBase(BaseModel):
     name: constr(min_length=1, max_length=100)
-    
+'''
 class TagCreate(TagBase):
     pass  # name inherited from Base
 
 class TagUpdate(BaseModel):
     name: Optional[constr(min_length=1, max_length=100)] = None
-    
+'''
+
 class TagOut(BaseModel):
     tag_id: int
     model_config = {"from_attributes": True}   

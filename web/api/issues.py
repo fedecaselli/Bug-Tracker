@@ -37,14 +37,24 @@ def list_issues(db: Session = Depends(get_db)):
 @router.get("/", response_model=list[schemas.IssueOut])
 def list_issues(
     db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of issues to skip"),
+    limit: int = Query(100,ge=0,le=1000, description="Number of issues to return (max 100)"),
     assignee: Optional[str] = Query(None, description="Filter by assignee"),
     priority: Optional[str] = Query(None, description="Filter by priority (low, medium, high)"),
     status: Optional[str] = Query(None, description="Filter by status (open, in_progress, closed)"),
     title: Optional[str] = Query(None, description="Filter by title"),
+    project_id: Optional[int] = Query(None, description='Filter by project_id'),
+    tags: Optional[str] = Query(None, description="Filter by tags (comma-separated)"),
+    tags_match_all: bool = Query(True, description="Return issue with either all or any tag matches")
+    
 ):
-    return repo_issues.list_issues(db, skip=skip, limit=limit, assignee=assignee, priority=priority, status=status, title=title)
+    try: 
+        tag_filter = None
+        if tags:
+            tag_filter = [tag.strip() for tag in tags.split(",") if tag.strip()]
+        return repo_issues.list_issues(db, skip=skip, limit=limit, assignee=assignee, priority=priority, status=status, title=title, project_id=project_id, tags=tag_filter,tags_match_all=tags_match_all)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
     
 
 @router.put("/{issue_id}", response_model=schemas.IssueOut)
@@ -55,10 +65,11 @@ def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends
         raise HTTPException(status_code=404, detail=str(e))
         
 
-@router.delete("/{issue_id}", response_model=bool)
+@router.delete("/{issue_id}", response_model=dict)
 def delete_issue(issue_id: int, db: Session = Depends(get_db)):
     try:
-        return repo_issues.delete_issue(db, issue_id)
+        repo_issues.delete_issue(db, issue_id)
+        return {"message": f"Issue {issue_id} deleted successfully"}
     except NotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
 

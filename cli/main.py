@@ -304,8 +304,8 @@ def cleanup_tags():
 
 @tag_app.command("list")
 def list_tags(
-    limit: int = typer.Option(100, "--limit", help="Max tags to show"),
-    skip: int = typer.Option(0, "--skip", help="Skip first N tags"),
+    limit: int = typer.Option(100, "--limit", help="Max tags to show", min=1, max=1000),
+    skip: int = typer.Option(0, "--skip", help="Skip first N tags", min=0),
     stats: bool = typer.Option(False, "--stats", help="Show usage statistics")
 ):
     """List all tags with optional usage statistics."""
@@ -320,9 +320,8 @@ def list_tags(
             typer.echo("Tag Name\t\tUsage Count")
             typer.echo("-" * 30)
             for stat in usage_stats:
-                typer.echo(f"{stat['tag_name']}\t\t{stat['usage_count']}")
+                typer.echo(f"{stat['name']}\t\t{stat['issue_count']}")
         else:
-            # Show simple tag list
             tags = repo_list_tags(db, skip=skip, limit=limit)
             if not tags:
                 typer.echo("No tags found")

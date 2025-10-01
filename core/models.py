@@ -90,7 +90,8 @@ class Tag(Base):
    
    
 
-
+class User(Base):
+#   __tablename__ = 'users'
     
     
 #One-to-many: project and issues
@@ -98,11 +99,8 @@ class Tag(Base):
 
 
 
-#FILTERING IDEA
-''' 
-SELECT * FROM issues WHERE tags LIKE '%"frontend"%';
-SELECT * FROM issues WHERE assignee = 'Alice'; !alice and Alice are considered different
-'''
+
+
 
 
 #INDEXES for speed up lookups when filtering 

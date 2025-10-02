@@ -6,6 +6,7 @@ from core.schemas import IssueCreate, IssueUpdate
 from core import models
 from .exceptions import NotFound
 from .tags import get_or_create_tags, update_tags, _normalize_name
+from core.automation.tag_generator import TagGenerator
 
 
 
@@ -23,12 +24,25 @@ def create_issue(db:Session, data: IssueCreate) -> Issue:
         priority=data.priority,
         status=data.status,
         assignee=data.assignee,
-    )
+    ) 
     
     #TAGSMANAGEMENT
     if data.tag_names:
-        tags = get_or_create_tags(db, data.tag_names)
+        all_tags = list(data.tag_names)
+    else:
+        all_tags = []
+    
+    if data.auto_generate_tags:
+        tag_generator = TagGenerator()
+        generated_tags = tag_generator.generate_tags(title=data.title, description=data.description or "", log=data.log or "")
+        for tag in generated_tags:
+            if tag not in all_tags:
+                all_tags.append(tag)
+                
+    if all_tags:
+        tags = get_or_create_tags(db, all_tags)
         issue.tags = tags
+                
     
     db.add(issue)
     db.commit()

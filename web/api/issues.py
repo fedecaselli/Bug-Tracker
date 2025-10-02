@@ -8,17 +8,38 @@ from core import models
 from core.db import get_db
 from core.repos import issues as repo_issues
 from core.repos.exceptions import NotFound, AlreadyExists
+from core.automation.tag_generator import TagGenerator  
 
 router = APIRouter(prefix="/issues", tags=["issues"])
 
+#CREATE ISSUE
 @router.post("/", response_model=schemas.IssueOut)
 def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
     try:
         return repo_issues.create_issue(db, data)
     except NotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
+    
 
+#SUGGEST TAGS
+@router.get("/suggest-tags", response_model=dict)
+def suggest_tags_api(
+    title: str = Query(..., description="Issue title"),
+    description: Optional[str] = Query(None, description="Issue description"),
+    log: Optional[str] = Query(None, description="Error log")
+):
+    """Get AI tag suggestions for issue content"""
+    
+    tag_generator = TagGenerator()  
+    suggested_tags = tag_generator.generate_tags(
+        title=title,
+        description=description or "",
+        log=log or ""
+    )
+    
+    return {"suggested_tags": suggested_tags}
 
+#GET SPECIFIC ISSUE
 @router.get("/{issue_id}", response_model=schemas.IssueOut)
 def get_issue(issue_id: int, db: Session = Depends(get_db)):
     try:
@@ -33,7 +54,7 @@ def list_issues(db: Session = Depends(get_db)):
     return repo_issues.list_issues(db)
 '''
 
-
+#LIST ISSUES
 @router.get("/", response_model=list[schemas.IssueOut])
 def list_issues(
     db: Session = Depends(get_db),
@@ -56,7 +77,7 @@ def list_issues(
     except NotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
     
-
+#UPDATE ISSUE
 @router.put("/{issue_id}", response_model=schemas.IssueOut)
 def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends(get_db)):
     try:
@@ -64,7 +85,7 @@ def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends
     except NotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
         
-
+#DELETE ISSUE
 @router.delete("/{issue_id}", response_model=dict)
 def delete_issue(issue_id: int, db: Session = Depends(get_db)):
     try:

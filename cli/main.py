@@ -135,7 +135,8 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
                 priority: str = typer.Option(...,"--priority", help="low | medium | high"),
                 status: str = typer.Option(..., "--status", help="open | in_progress | closed"),
                 assignee: Optional[str] = typer.Option(None,"--assignee", help="Person responsible for resolving the issue"),
-                tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated list of tags")):
+                tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated list of tags"),
+                auto_tags: bool = typer.Option(False, "--auto-tags", help="Automatic tag generation")):
     with session_scope() as db: 
         if log == "-":
             log = sys.stdin.read()
@@ -185,8 +186,9 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
                                 status=status,
                                 assignee=assignee,
                                 tag_names=tag_names,
+                                auto_generate_tags=auto_tags
                                 ), )  
-            typer.echo(f"Issue {issue.issue_id} successfully created with title {issue.title} in project {final_project_id}")
+            typer.echo(f"Issue {issue.issue_id} successfully created with title '{issue.title}' in project {final_project_id}")
         except NotFound as e:
             typer.echo(str(e))
             raise typer.Exit(code=1)
@@ -272,7 +274,7 @@ def list_issue(
         for issue in rows:
             tag_names = [tag.name for tag in issue.tags] if issue.tags else []
             tags_str = f"{', '.join(tag_names)}" if tag_names else "none" # ADD PROJECT ID EN PRINT 
-            typer.echo(f"Issue id: {issue.issue_id:} \ttitle: {issue.title} \tdescription: {issue.description} \tlog: {issue.log} \tsummary: {issue.summary} \tpriority: {issue.priority}\tstatus: {issue.status} \tassignee: {issue.assignee} \ttags: {tags_str}")
+            typer.echo(f"Issue id: {issue.issue_id:} \ntitle: {issue.title} \ndescription: {issue.description} \nlog: {issue.log} \nsummary: {issue.summary} \npriority: {issue.priority}\nstatus: {issue.status} \nassignee: {issue.assignee} \ntags: {tags_str}\n")
 
 
 @issue_app.command("update")

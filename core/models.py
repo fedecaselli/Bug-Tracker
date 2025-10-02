@@ -90,9 +90,6 @@ class Tag(Base):
    
    
 
-class User(Base):
-#   __tablename__ = 'users'
-    
     
 #One-to-many: project and issues
 #Many-to-many: tags and issues
@@ -104,10 +101,5 @@ class User(Base):
 
 
 #INDEXES for speed up lookups when filtering 
-
-
-
-
-
 
 

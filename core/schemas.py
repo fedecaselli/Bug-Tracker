@@ -22,7 +22,7 @@ class TagUpdate(BaseModel):
     name: Optional[constr(min_length=1, max_length=100)] = None
 '''
 
-class TagOut(BaseModel):
+class TagOut(TagBase):
     tag_id: int
     model_config = {"from_attributes": True}   
 
@@ -53,6 +53,7 @@ class IssueBase(BaseModel):
     assignee: Optional[str] = None
 
 
+
     @field_validator("priority")
     @classmethod
     def normalize_priority(cls, priority):
@@ -76,6 +77,7 @@ class IssueBase(BaseModel):
 class IssueCreate(IssueBase):
     project_id: int
     tag_names: Optional[List[str]] = Field(default_factory=list)  #List of strings / empty list
+    auto_generate_tags: bool = Field(default=False)
     
 # OPTIONALS > MODIFY 1 OR MORE 
 class IssueUpdate(BaseModel): #cannot inherit from issuebase bc they are optional fields

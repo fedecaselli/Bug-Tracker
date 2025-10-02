@@ -136,7 +136,8 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
                 status: str = typer.Option(..., "--status", help="open | in_progress | closed"),
                 assignee: Optional[str] = typer.Option(None,"--assignee", help="Person responsible for resolving the issue"),
                 tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated list of tags"),
-                auto_tags: bool = typer.Option(False, "--auto-tags", help="Automatic tag generation")):
+                auto_tags: bool = typer.Option(False, "--auto-tags", help="Automatic tag generation"),
+                auto_assignee: bool = typer.Option(False, "--auto-assignee",help="Automatic assign to most suitable person")):
     with session_scope() as db: 
         if log == "-":
             log = sys.stdin.read()
@@ -186,9 +187,14 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
                                 status=status,
                                 assignee=assignee,
                                 tag_names=tag_names,
-                                auto_generate_tags=auto_tags
+                                auto_generate_tags=auto_tags,
+                                auto_generate_assignee=auto_assignee
                                 ), )  
             typer.echo(f"Issue {issue.issue_id} successfully created with title '{issue.title}' in project {final_project_id}")
+            if auto_assignee and issue.assignee and not assignee:
+                typer.echo(f"Auto-assigned to: {issue.assignee}")
+            elif auto_assignee and not issue.assignee:
+                typer.echo("Auto-assignment requested but no suitable assignee found")
         except NotFound as e:
             typer.echo(str(e))
             raise typer.Exit(code=1)

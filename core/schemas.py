@@ -78,6 +78,7 @@ class IssueCreate(IssueBase):
     project_id: int
     tag_names: Optional[List[str]] = Field(default_factory=list)  #List of strings / empty list
     auto_generate_tags: bool = Field(default=False)
+    auto_generate_assignee: bool = Field(default=False)
     
 # OPTIONALS > MODIFY 1 OR MORE 
 class IssueUpdate(BaseModel): #cannot inherit from issuebase bc they are optional fields

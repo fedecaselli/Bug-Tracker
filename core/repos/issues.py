@@ -7,6 +7,8 @@ from core import models
 from .exceptions import NotFound
 from .tags import get_or_create_tags, update_tags, _normalize_name
 from core.automation.tag_generator import TagGenerator
+from core.automation.assignee_suggestion import AssigneeSuggester 
+
 
 
 
@@ -47,6 +49,23 @@ def create_issue(db:Session, data: IssueCreate) -> Issue:
     db.add(issue)
     db.commit()
     db.refresh(issue)
+    
+    if data.auto_generate_assignee and not data.assignee:  # Only auto-assign if no manual assignee provided
+        suggester = AssigneeSuggester()
+    
+        # Get the tag names that were just assigned
+        issue_tag_names = []
+        if issue.tags:
+            for tag in issue.tags:
+                issue_tag_names.append(tag.name)
+        
+        suggested_assignee = suggester.suggest_assignee(db, issue_tag_names, issue.status, issue.priority)
+        
+        if suggested_assignee:
+            issue.assignee = suggested_assignee
+            db.commit()
+            db.refresh(issue)
+            
     return issue
     
         

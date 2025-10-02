@@ -9,6 +9,7 @@ from core.db import get_db
 from core.repos import issues as repo_issues
 from core.repos.exceptions import NotFound, AlreadyExists
 from core.automation.tag_generator import TagGenerator  
+from core.automation.assignee_suggestion import AssigneeSuggester  
 
 router = APIRouter(prefix="/issues", tags=["issues"])
 
@@ -20,9 +21,24 @@ def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
     except NotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
     
+# AUTO-ASSIGN TASK TO ASSIGNEE
+@router.post("/{issue_id}/auto-assign", response_model=dict)
+def auto_assign_issue(issue_id: int,db: Session = Depends(get_db)):
+    try:
+        suggester = AssigneeSuggester()
+        success = suggester.auto_assign(db, issue_id)
+        if success:
+            issue_after = repo_issues.get_issue(db, issue_id)
+            return {"assigned_to": issue_after.assignee}
+        else:
+            raise HTTPException(status_code=400, detail="Could not automatically assign")
+
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 
 #SUGGEST TAGS
-@router.get("/suggest-tags", response_model=dict)
+@router.post("/suggest-tags", response_model=dict)
 def suggest_tags_api(
     title: str = Query(..., description="Issue title"),
     description: Optional[str] = Query(None, description="Issue description"),
@@ -38,6 +54,7 @@ def suggest_tags_api(
     )
     
     return {"suggested_tags": suggested_tags}
+
 
 #GET SPECIFIC ISSUE
 @router.get("/{issue_id}", response_model=schemas.IssueOut)

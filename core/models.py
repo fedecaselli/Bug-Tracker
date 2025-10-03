@@ -96,10 +96,4 @@ class Tag(Base):
 
 
 
-
-
-
-
 #INDEXES for speed up lookups when filtering 
-
-

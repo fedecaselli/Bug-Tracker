@@ -23,3 +23,4 @@ class TagGenerator:
                     break  # Only add the tag once per category
           
         return suggested_tags
+    

@@ -1,8 +1,26 @@
+"""
+Tag Generator 
+
+This module provides functionality to automatically generate tags for issues based on their title, description, and logs. 
+Tags are generated using simple keyword matching against predefined categories.
+
+Key Features:
+- Automatically generate tags based on issue content.
+- Supports multiple categories such as "bug", "frontend", "backend", and "performance".
+- Uses a keyword-based approach for tag generation.
+"""
+
 from typing import List
 import re
 
 class TagGenerator:
+    """
+    Class to handle automatic tag generation for issues.
+    """
     def __init__(self):
+        """
+        Initialize the TagGenerator class with predefined keyword categories.
+        """
         self.keywords = {
             "bug": ["error", "bug", "fail", "crash", "broken", "issue"],
             "frontend": ["ui", "frontend", "interface", "button", "form", "page"],
@@ -11,7 +29,19 @@ class TagGenerator:
         }
     
     def generate_tags(self, title: str, description: str = "", log: str = "") -> List[str]:
-        """Generate tags based on simple keyword matching"""
+        """
+        Generate tags based on simple keyword matching.
+
+        Args:
+            title (str): The title of the issue.
+            description (str, optional): The description of the issue. Defaults to an empty string.
+            log (str, optional): The log details of the issue. Defaults to an empty string.
+
+        Returns:
+            List[str]: A list of suggested tags based on the issue content.
+        """
+        
+        # Combine the title, description, and log into a single text block
         text = f"{title} {description} {log}".lower()
         
         suggested_tags = []
@@ -19,8 +49,10 @@ class TagGenerator:
         for tag, keywords in self.keywords.items():
             for keyword in keywords:
                 if keyword in text:
+                # If a keyword is found in the text, add the tag and stop checking further keywords
                     suggested_tags.append(tag)
-                    break  # Only add the tag once per category
+                    break  
           
         return suggested_tags
     
+

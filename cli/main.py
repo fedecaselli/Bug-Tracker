@@ -148,21 +148,28 @@ def delete_project(
         
 
 @project_app.command("list")
-def list_project():
+def list_project(
+    limit: int = typer.Option(20, "--limit", help="Max projects to show", min=1, max=100),
+    skip: int = typer.Option(0, "--skip", help="Skip first N projects", min=0)
+):
     """
-    List all projects with basic information.
+    List all projects with basic information and optional pagination.
     
     Displays all projects in the system with their ID, name, and creation timestamp.
-    Shows a message if no projects exist.
+    Supports pagination using the --limit and --skip options.
+    
+    Args:
+        limit (int): Maximum number of projects to display (default: 20).
+        skip (int): Number of projects to skip for pagination (default: 0).
         
     Example:
-        $ python -m cli projects list
-        Project id: 1    name: MyApp    created at: 2023-10-03 14:30:00
+        $ python -m cli projects list --limit 10 --skip 20
+        Project id: 21    name: MyApp    created at: 2023-10-03 14:30:00
     """
 
     with session_scope() as db: 
         # Get all projects
-        rows = repo_list_projects(db)
+        rows = repo_list_projects(db, skip=skip, limit=limit)
         if not rows:
             typer.echo("No projects")
             return

@@ -1,30 +1,34 @@
-'''
-#SQLALCCHEMY ORM STYLE
-engine = create_engine(DATABASE_URL)
-Base = declarative_base()
-print("DB ready")
-'''
+"""
+Database Configuration 
+
+This module sets up the database connection, session management, and ORM base class.
+It also ensures SQLite foreign key constraints are enforced.
+"""
 
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from config import DATABASE_URL
 
-# Basic connection to SQLite Database
+# Creates a connection to the SQLite database specified in the configuration.
 engine = create_engine(DATABASE_URL,connect_args={"check_same_thread": False})
+
+# Provides scoped sessions for database operations.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base class for all ORM models.
 Base = declarative_base()
 
-# Enable SQLite foreign key enforcement
-@event.listens_for(engine, "connect") #run every time new DB connection is created
+# Ensures foreign key constraints are enforced for SQLite databases.
+@event.listens_for(engine, "connect") 
 def enable_foreign_keys(dbapi_conn, _):
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
-#Function responsible for managing database sessions
+# Provides a database session for use in application logic.
 def get_db():
-    db = SessionLocal() #each session is a connection to db
+    db = SessionLocal() 
     try:
         yield db
     finally:

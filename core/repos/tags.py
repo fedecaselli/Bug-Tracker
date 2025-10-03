@@ -1,33 +1,56 @@
-from typing import Iterable, List
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import text
-from core.models import Tag, Issue
-#from core.schemas import TagUpdate
-from core import models
-from .exceptions import AlreadyExists, NotFound
+"""
+Repository functions for managing tags.
 
+This module provides the core database operations for tags, including:
+- Creating, retrieving, updating, and deleting tags.
+- Normalizing tag names and handling tag associations with issues.
+- Generating tag usage statistics and cleaning up unused tags.
+"""
+
+from typing import List
+from sqlalchemy.orm import Session
+from core.models import Tag, Issue
+from core import models
+from .exceptions import NotFound
+from sqlalchemy import func
+from sqlalchemy import text
+
+# NORMALIZE TAG NAME
 def _normalize_name(name: str) -> str:
     """Normalize tag name: trim, collapse spaces, lowercase."""
     return ' '.join(name.strip().lower().split())
 
-#GET TAG BY NAME 
+# GET TAG BY NAME 
 def get_tag_by_name(db: Session, name: str) -> models.Tag | None:
+    """
+    Retrieve a tag by its name.
+
+    Args:
+        db (Session): Database session.
+        name (str): Name of the tag to retrieve.
+
+    Returns:
+        Tag | None: The retrieved tag, or None if it does not exist.
+    """
     normalized = _normalize_name(name)
     return db.query(models.Tag).filter(models.Tag.name == normalized).first()
 
 
 def get_or_create_tags(db: Session, names: List[str]) -> List[Tag]:
     """
-    Goal: return Tag objects for given names, creating missing ones.
-    Normalize input (trim, collapse spaces, lowercase).
-    Query existing tags for those normalized names.
-    Compute which names are missing; insert them.
+    Retrieve or create tags based on a list of names.
+
+    Args:
+        db (Session): Database session.
+        names (List[str]): List of tag names to retrieve or create.
+
+    Returns:
+        List[Tag]: List of tags, including both existing and newly created ones.
     """
     if not names:
         return []
     
-    # Normalize all input names and remove duplicates/empty
+    # Normalize all input names and remove duplicates / empty names
     normalized_names = []
     seen = set()
     for name in names:
@@ -41,10 +64,16 @@ def get_or_create_tags(db: Session, names: List[str]) -> List[Tag]:
     
     # Query existing tags for all normalized names
     existing_tags = db.query(Tag).filter(Tag.name.in_(normalized_names)).all()
-    existing_names = {tag.name for tag in existing_tags}
+    existing_names = set()
+    for tag in existing_tags:
+        existing_names.add(tag.name)
+        
     
     # Compute which names are missing
-    missing_names = [name for name in normalized_names if name not in existing_names]
+    missing_names = []
+    for name in normalized_names:
+        if name not in existing_names:
+            missing_names.append(name)
     
     # Insert missing tags
     new_tags = []
@@ -56,14 +85,25 @@ def get_or_create_tags(db: Session, names: List[str]) -> List[Tag]:
     if new_tags:
         db.flush()  # Get IDs without committing
     
-    # Return all tags (existing + new) in the order requested
+    # Return all tags (existing and new)
     result = []
     for name in normalized_names:
-        # Find in existing tags first
-        tag = next((t for t in existing_tags if t.name == name), None)
+        tag = None
+
+        # Search in existing tags
+        for existing_tag in existing_tags:
+            if existing_tag.name == name:
+                tag = existing_tag
+                break
+
+        # If not found in existing tags, search in new tags
         if not tag:
-            # Find in new tags
-            tag = next((t for t in new_tags if t.name == name), None)
+            for new_tag in new_tags:
+                if new_tag.name == name:
+                    tag = new_tag
+                    break
+
+        # Add the tag to the result if found
         if tag:
             result.append(tag)
     
@@ -71,30 +111,34 @@ def get_or_create_tags(db: Session, names: List[str]) -> List[Tag]:
 
 def update_tags(db: Session, issue: Issue, names: List[str]) -> Issue:
     """
-    Goal: set the issue's tags to exactly the provided list (ONLY THAT ISSUE'S TAGS).
-    Resolve tags = get_or_create_tags(...).
-    Assign: issue.tags = tags (SQLAlchemy will diff the association table).
-    Do not delete Tag rows here.
+    Update the tags associated with an issue.
+
+    Args:
+        db (Session): Database session.
+        issue (Issue): The issue to update tags for.
+        names (List[str]): List of tag names to associate with the issue.
+
+    Returns:
+        Issue: The updated issue with the new tags.
     """
-    # Get or create all requested tags
     tags = get_or_create_tags(db, names)
-    
-    # Assign to issue - SQLAlchemy will handle the association table diff
     issue.tags = tags
-    
-    # Commit is handled by caller
     return issue
 
 def remove_tags_with_no_issue(db: Session) -> int:
     """
-    Goal: garbage-collect orphan tags (no issues referencing them).
-    Delete those Tag rows. Return count removed.
+    Remove tags that are not associated with any issues.
+
+    Args:
+        db (Session): Database session.
+
+    Returns:
+        int: The number of tags removed.
     """
     # Find tags with no associated issues
     orphaned_tags = db.query(Tag).filter(~Tag.issues.any()).all()
     count = len(orphaned_tags)
     
-    # Delete orphaned tags
     for tag in orphaned_tags:
         db.delete(tag)
     
@@ -103,23 +147,29 @@ def remove_tags_with_no_issue(db: Session) -> int:
 
 def rename_tags_everywhere(db: Session, old_name: str, new_name: str) -> None:
     """
-    Goal: rename a tag everywhere.
-    Normalize both names.
-    Find old = Tag(old_name); if not found, no-op / raise.
-    If new tag exists: Merge by updating issue_tags association.
-    Else: Update old.name.
-    All issues update automatically because they reference the tag row.
+    Rename a tag globally or merge it with an existing tag.
+
+    Args:
+        db (Session): Database session.
+        old_name (str): The current name of the tag.
+        new_name (str): The new name to assign to the tag.
+
+    Raises:
+        ValueError: If the tag names are empty after normalization.
+        NotFound: If the tag to rename does not exist.
     """
+
     old_normalized = _normalize_name(old_name)
     new_normalized = _normalize_name(new_name)
     
     if not old_normalized or not new_normalized:
-        raise ValueError("Tag names cannot be empty after normalization")
+        raise ValueError("Tag names cannot be empty")
     
+    # Handle if old and new name are the same
     if old_normalized == new_normalized:
-        return  # No-op if names are the same after normalization
+        return  
     
-    # Get the old tag
+    # Check that tag to rename exists
     old_tag = get_tag_by_name(db, old_normalized)
     if not old_tag:
         raise NotFound(f"Tag '{old_name}' not found")
@@ -129,9 +179,6 @@ def rename_tags_everywhere(db: Session, old_name: str, new_name: str) -> None:
     
     if new_tag:
         # Merge tags: move all issues from old_tag to new_tag
-        # First, get all issues that have the old tag but not the new tag
-        from sqlalchemy import text
-        
         # Remove issues that already have both tags to avoid constraint violation
         db.execute(
             text("""
@@ -153,14 +200,26 @@ def rename_tags_everywhere(db: Session, old_name: str, new_name: str) -> None:
         # Delete old tag
         db.delete(old_tag)
     else:
-        # Simply rename the old tag
+        # Rename the old tag to new tag name
         old_tag.name = new_normalized
     
     db.commit()
 
 #GET TAG
 def get_tag(db: Session, tag_id: int) -> models.Tag:
-    """Get tag by ID."""
+    """
+    Retrieve a tag by its ID.
+
+    Args:
+        db (Session): Database session.
+        tag_id (int): ID of the tag to retrieve.
+
+    Returns:
+        Tag: The retrieved tag.
+
+    Raises:
+        NotFound: If the tag does not exist.
+    """
     tag = db.query(models.Tag).filter(models.Tag.tag_id == tag_id).first()
     if not tag:
         raise NotFound(f"Tag {tag_id} not found")
@@ -168,7 +227,16 @@ def get_tag(db: Session, tag_id: int) -> models.Tag:
 
 #DELETE TAG
 def delete_tag(db: Session, tag_id: int) -> bool:
-    """Delete tag from all issues."""
+    """
+    Delete a tag from all issues.
+
+    Args:
+        db (Session): Database session.
+        tag_id (int): ID of the tag to delete.
+
+    Returns:
+        bool: True if the tag was successfully deleted.
+    """
     tag = get_tag(db, tag_id)
     db.delete(tag)
     db.commit()
@@ -178,29 +246,40 @@ def delete_tag(db: Session, tag_id: int) -> bool:
 
 #LIST
 def list_tags(db: Session, skip: int = 0, limit: int = 100) -> list[models.Tag]:
+    """
+    List all tags with optional pagination.
+
+    Args:
+        db (Session): Database session.
+        skip (int): Number of tags to skip.
+        limit (int): Maximum number of tags to return.
+
+    Returns:
+        list[Tag]: List of tags.
+    """
     return db.query(models.Tag).offset(skip).limit(limit).all()
 
 #TAG USAGE STATS
 def get_tag_usage_stats(db: Session) -> list[dict]:
-    """Get statistics about tag usage."""
-    from sqlalchemy import func
-    
-    results = db.query(
-        models.Tag.tag_id,
-        models.Tag.name,
-        func.count(models.Issue.issue_id).label('issue_count')
-    ).outerjoin(
-        models.Tag.issues
-    ).group_by(
-        models.Tag.tag_id, models.Tag.name
-    ).all()
-    
-    return [
-        {
+    """
+    Get statistics about tag usage.
+
+    Args:
+        db (Session): Database session.
+
+    Returns:
+        list[dict]: List of dictionaries containing tag usage statistics.
+    """
+    results = db.query(models.Tag.tag_id, 
+                       models.Tag.name, 
+                       func.count(models.Issue.issue_id).label('issue_count')).outerjoin(models.Tag.issues).group_by(models.Tag.tag_id, models.Tag.name).all()
+    result = []
+    for result_item in results:
+        result.append({
             "tag_id": result.tag_id,
             "name": result.name,
             "issue_count": result.issue_count
-        }
-        for result in results
-    ]
+        })
+    return result
+    
     

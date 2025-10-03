@@ -5,7 +5,7 @@ from .db import Base
 
 
 """
-Database Models for Bug Tracker Application
+Database Models 
 
 This module defines the SQLAlchemy ORM models for:
 - Issues: Bug reports 

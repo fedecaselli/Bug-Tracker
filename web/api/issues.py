@@ -1,3 +1,17 @@
+"""
+API Endpoints for Managing Issues in the Bug Tracker Application
+
+This module provides the API endpoints for creating, retrieving, updating, deleting,
+and filtering issues. It also includes endpoints for auto-assigning issues to assignees
+and generating AI-based tag suggestions.
+
+Key Features:
+- Create, retrieve, update, and delete issues.
+- Filter issues by various criteria such as assignee, priority, status, and tags.
+- Auto-assign issues to the best assignee based on workload and expertise.
+- Generate tag suggestions using AI-based logic.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -7,15 +21,32 @@ from core import schemas
 from core import models
 from core.db import get_db
 from core.repos import issues as repo_issues
-from core.repos.exceptions import NotFound, AlreadyExists
+from core.repos.exceptions import NotFound
 from core.automation.tag_generator import TagGenerator  
 from core.automation.assignee_suggestion import AssigneeSuggester  
 
+
+#CHECK WHEN TO USE NOT FOUND WHEN ALREADYEXISTS WHEN ALL
+
+# Initialize the router for issue-related endpoints
 router = APIRouter(prefix="/issues", tags=["issues"])
 
 #CREATE ISSUE
 @router.post("/", response_model=schemas.IssueOut)
 def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
+    """
+    Create a new issue.
+
+    Args:
+        data (schemas.IssueCreate): Data for the new issue.
+        db (Session): Database session.
+
+    Returns:
+        schemas.IssueOut: The created issue.
+
+    Raises:
+        HTTPException: If the associated project is not found.
+    """
     try:
         return repo_issues.create_issue(db, data)
     except NotFound as e:
@@ -24,6 +55,19 @@ def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
 # AUTO-ASSIGN TASK TO ASSIGNEE
 @router.post("/{issue_id}/auto-assign", response_model=dict)
 def auto_assign_issue(issue_id: int,db: Session = Depends(get_db)):
+    """
+    Automatically assign an issue to the best available assignee.
+
+    Args:
+        issue_id (int): ID of the issue to assign.
+        db (Session): Database session.
+
+    Returns:
+        dict: A message indicating the assigned assignee.
+
+    Raises:
+        HTTPException: If the issue is not found or auto-assignment fails.
+    """
     try:
         suggester = AssigneeSuggester()
         success = suggester.auto_assign(db, issue_id)
@@ -44,8 +88,18 @@ def suggest_tags_api(
     description: Optional[str] = Query(None, description="Issue description"),
     log: Optional[str] = Query(None, description="Error log")
 ):
-    """Get AI tag suggestions for issue content"""
-    
+    """
+    Generate AI-based tag suggestions for an issue.
+
+    Args:
+        title (str): Title of the issue.
+        description (Optional[str]): Description of the issue.
+        log (Optional[str]): Error log associated with the issue.
+
+    Returns:
+        dict: Suggested tags for the issue.
+    """
+
     tag_generator = TagGenerator()  
     suggested_tags = tag_generator.generate_tags(
         title=title,
@@ -59,6 +113,19 @@ def suggest_tags_api(
 #GET SPECIFIC ISSUE
 @router.get("/{issue_id}", response_model=schemas.IssueOut)
 def get_issue(issue_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve a specific issue by its ID.
+
+    Args:
+        issue_id (int): ID of the issue to retrieve.
+        db (Session): Database session.
+
+    Returns:
+        schemas.IssueOut: The retrieved issue.
+
+    Raises:
+        HTTPException: If the issue is not found.
+    """
     try:
         return repo_issues.get_issue(db, issue_id)
     except NotFound as e:
@@ -86,6 +153,24 @@ def list_issues(
     tags_match_all: bool = Query(True, description="Return issue with either all or any tag matches")
     
 ):
+    """
+    List issues with optional filters.
+
+    Args:
+        db (Session): Database session.
+        skip (int): Number of issues to skip.
+        limit (int): Maximum number of issues to return.
+        assignee (Optional[str]): Filter by assignee.
+        priority (Optional[str]): Filter by priority.
+        status (Optional[str]): Filter by status.
+        title (Optional[str]): Filter by title.
+        project_id (Optional[int]): Filter by project ID.
+        tags (Optional[str]): Filter by tags.
+        tags_match_all (bool): Match all or any tags.
+
+    Returns:
+        list[schemas.IssueOut]: List of issues matching the filters.
+    """
     try: 
         tag_filter = None
         if tags:
@@ -97,6 +182,20 @@ def list_issues(
 #UPDATE ISSUE
 @router.put("/{issue_id}", response_model=schemas.IssueOut)
 def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends(get_db)):
+    """
+    Update an existing issue.
+
+    Args:
+        issue_id (int): ID of the issue to update.
+        data (schemas.IssueUpdate): Updated data for the issue.
+        db (Session): Database session.
+
+    Returns:
+        schemas.IssueOut: The updated issue.
+
+    Raises:
+        HTTPException: If the issue is not found.
+    """
     try:
         return repo_issues.update_issue(db, issue_id, data)
     except NotFound as e:
@@ -105,6 +204,19 @@ def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends
 #DELETE ISSUE
 @router.delete("/{issue_id}", response_model=dict)
 def delete_issue(issue_id: int, db: Session = Depends(get_db)):
+    """
+    Delete an issue by its ID.
+
+    Args:
+        issue_id (int): ID of the issue to delete.
+        db (Session): Database session.
+
+    Returns:
+        dict: A message confirming the deletion.
+
+    Raises:
+        HTTPException: If the issue is not found.
+    """
     try:
         repo_issues.delete_issue(db, issue_id)
         return {"message": f"Issue {issue_id} deleted successfully"}

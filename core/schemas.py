@@ -1,9 +1,5 @@
-from typing import Optional, List
-from pydantic import BaseModel, Field, constr
-from datetime import datetime
-
 """
-Pydantic Schemas for Bug Tracker Application
+Pydantic Schemas 
 
 This module defines Pydantic models used for validating and formatting data in the bug tracking API. These schemas ensure that the data 
 sent between the client and server is well-structured, accurate, and adheres to the expected format.
@@ -13,20 +9,18 @@ Schema Pattern:
 - Create: Fields required for creating new records.
 - Update: Optional fields for partial updates.
 - Out: Response format with computed fields and relationships.
-
-Validation:
-- Pydantic handles basic input validation (e.g., type checking, length constraints).
-- SQLAlchemy enforces business rules and ensures database integrity.
-- Database constraints provide an additional layer of data validation.
 """
 
-    
+from typing import Optional, List
+from pydantic import BaseModel, Field, constr
+from datetime import datetime    
 
 # TAG SCHEMAS
 
 class TagBase(BaseModel):
     """Base tag schema with common fields."""
     name: constr(min_length=1, max_length=100)
+
 '''
 class TagCreate(TagBase):
     """Schema for creating new tags."""

@@ -1,9 +1,8 @@
 """
 API Endpoints for Managing Tags in the Bug Tracker Application
 
-This module provides the API endpoints for creating, retrieving, updating, deleting,
-and managing tags. It also includes endpoints for retrieving tag usage statistics
-and cleaning up unused tags.
+This module provides the API endpoints for creating, retrieving, updating, deleting, and managing tags. It also includes endpoints for 
+retrieving tag usage statistics and cleaning up unused tags.
 
 Key Features:
 - Retrieve a specific tag by its ID.
@@ -102,7 +101,7 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
 
 # RENAME TAG 
-@router.post("/rename", response_model=dict)
+@router.patch("/rename", response_model=dict)
 def rename_tag(
     old_name: str = Query(..., description="Current tag name"),
     new_name: str = Query(..., description="New tag name"),
@@ -131,7 +130,7 @@ def rename_tag(
         raise HTTPException(status_code=400, detail=str(e))
     
 # CLEAN UP UNUSED TAGS
-@router.post("/cleanup", response_model=dict)
+@router.delete("/cleanup", response_model=dict)
 def cleanup_unused_tags(db: Session = Depends(get_db)):
     """
     Remove all tags that are not associated with any issues.

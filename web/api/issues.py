@@ -1,9 +1,8 @@
 """
 API Endpoints for Managing Issues in the Bug Tracker Application
 
-This module provides the API endpoints for creating, retrieving, updating, deleting,
-and filtering issues. It also includes endpoints for auto-assigning issues to assignees
-and generating AI-based tag suggestions.
+This module provides the API endpoints for creating, retrieving, updating, deleting, and filtering issues. It also includes endpoints 
+for auto-assigning issues to assignees and generating AI-based tag suggestions.
 
 Key Features:
 - Create, retrieve, update, and delete issues.
@@ -16,19 +15,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from fastapi import Query
-
 from core import schemas
-from core import models
 from core.db import get_db
 from core.repos import issues as repo_issues
 from core.repos.exceptions import NotFound
 from core.automation.tag_generator import TagGenerator  
 from core.automation.assignee_suggestion import AssigneeSuggester  
+from core.schemas import IssueOut
 
 
 #CHECK WHEN TO USE NOT FOUND WHEN ALREADYEXISTS WHEN ALL
 
-# Initialize the router for issue-related endpoints
+# Initialize the router for issue related endpoints
 router = APIRouter(prefix="/issues", tags=["issues"])
 
 #CREATE ISSUE
@@ -81,7 +79,7 @@ def auto_assign_issue(issue_id: int,db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-#SUGGEST TAGS
+# SUGGEST TAGS
 @router.post("/suggest-tags", response_model=dict)
 def suggest_tags_api(
     title: str = Query(..., description="Issue title"),
@@ -110,7 +108,7 @@ def suggest_tags_api(
     return {"suggested_tags": suggested_tags}
 
 
-#GET SPECIFIC ISSUE
+# GET SPECIFIC ISSUE
 @router.get("/{issue_id}", response_model=schemas.IssueOut)
 def get_issue(issue_id: int, db: Session = Depends(get_db)):
     """
@@ -224,3 +222,20 @@ def delete_issue(issue_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+# SEARCH ISSUES
+@router.get("/search", response_model=List[IssueOut])
+def search_issues_api(query: str = Query(..., description="Search query for issues"), db: Session = Depends(get_db)):
+    """
+    Search for issues by title, description, or tags.
+
+    Args:
+        query (str): Search query string.
+        db (Session): Database session.
+
+    Returns:
+        List[IssueOut]: List of issues matching the search query.
+    """
+    try:
+        return repo_issues.search_issues(db, query)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

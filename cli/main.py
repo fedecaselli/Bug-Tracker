@@ -1,3 +1,11 @@
+"""
+CLI
+
+This module provides a command-line interface (CLI) for managing projects, issues, and tags in the Bug Tracker application. 
+It allows users to perform operations such as creating, updating, deleting, and listing projects, issues, and tags. 
+The CLI also supports advanced features like automatic tag generation and assignee suggestion.
+"""
+
 from core.db import SessionLocal
 import typer
 from typing import Optional

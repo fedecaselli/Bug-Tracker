@@ -245,3 +245,20 @@ def list_issues(
     query = query.order_by(models.Issue.created_at.asc())
     return query.offset(skip).limit(limit).all()
 
+
+# SEARCH ISSUE
+def search_issues(db: Session, query: str) -> list[models.Issue]:
+    """
+    Search for issues by title, description, or tags.
+
+    Args:
+        db (Session): Database session.
+        query (str): Search query.
+
+    Returns:
+        list[Issue]: List of issues matching the search query.
+    """
+    return db.query(models.Issue).filter(
+        models.Issue.title.ilike(f"%{query}%") |
+        models.Issue.description.ilike(f"%{query}%")
+    ).all()

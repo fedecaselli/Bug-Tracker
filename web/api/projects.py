@@ -1,9 +1,8 @@
 """
 API Endpoints for Managing Projects in the Bug Tracker Application
 
-This module provides the API endpoints for creating, retrieving, updating, deleting,
-and listing projects. It also includes endpoints for retrieving issues associated
-with a specific project.
+This module provides the API endpoints for creating, retrieving, updating, deleting, and listing projects. It also includes endpoints 
+for retrieving issues associate with a specific project.
 
 Key Features:
 - Create, retrieve, update, and delete projects.
@@ -22,6 +21,7 @@ from core.repos.exceptions import NotFound, AlreadyExists
 # Initialize the router for project related endpoints
 router = APIRouter(prefix="/projects", tags=["projects"])
 
+# CREATE PROJECT
 @router.post("/", response_model=schemas.ProjectOut)
 def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
     """
@@ -43,13 +43,14 @@ def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409,detail=str(e))
         
 
-@router.get("/{project_id}", response_model=schemas.ProjectOut)
-def get_project(project_id: int, db: Session = Depends(get_db)):
+# GET PROJECT
+@router.get("/by-name", response_model=schemas.ProjectOut)
+def get_project_by_name(name: str, db: Session = Depends(get_db)):
     """
-    Retrieve a specific project by its ID.
+    Retrieve a specific project by its name.
 
     Args:
-        project_id (int): ID of the project to retrieve.
+        name (int): name of the project to retrieve.
         db (Session): Database session.
 
     Returns:
@@ -59,11 +60,11 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
         HTTPException: If the project is not found.
     """
     try:
-        return repo_projects.get_project(db, project_id)
+        return repo_projects.get_project_by_name(db, name)
     except NotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-
+# LIST ALL PROJECTS
 @router.get("/", response_model=list[schemas.ProjectOut])
 def list_projects(db: Session = Depends(get_db)):
     """
@@ -77,6 +78,7 @@ def list_projects(db: Session = Depends(get_db)):
     """
     return repo_projects.list_projects(db)
 
+# UPDATE PROJECT
 @router.put("/{project_id}", response_model=schemas.ProjectOut)
 def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = Depends(get_db)):
     """
@@ -101,6 +103,7 @@ def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = D
         raise HTTPException(status_code=409, detail=str(e))
 
 
+# DELETE PROJECT
 @router.delete("/{project_id}", response_model=bool)
 def delete_project(project_id: int, db: Session = Depends(get_db)):
     """
@@ -122,6 +125,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+# LIST ISSUES FOR PROJECT 
 @router.get("/{project_id}/issues", response_model=list[schemas.IssueOut])
 def list_issues_for_project(project_id: int, db: Session = Depends(get_db)):
     """

@@ -276,9 +276,9 @@ def get_tag_usage_stats(db: Session) -> list[dict]:
     result = []
     for result_item in results:
         result.append({
-            "tag_id": result.tag_id,
-            "name": result.name,
-            "issue_count": result.issue_count
+            "tag_id": result_item.tag_id,
+            "name": result_item.name,
+            "issue_count": result_item.issue_count
         })
     return result
     

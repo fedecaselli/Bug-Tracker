@@ -12,7 +12,7 @@ Schema Pattern:
 """
 
 from typing import Optional, List
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field, constr, field_validator
 from datetime import datetime    
 
 # TAG SCHEMAS
@@ -72,6 +72,30 @@ class IssueBase(BaseModel):
     status: str = "open"
     assignee: Optional[str] = None
 
+    @field_validator('priority', mode='before')
+    @classmethod
+    def normalize_priority(cls, v):
+        """Normalize priority to lowercase."""
+        if v is None:
+            raise ValueError("Priority is required")
+        normalized = str(v).lower().strip()
+        # Validate against allowed values
+        if normalized not in ("low", "medium", "high"):
+            raise ValueError("Priority must be one of: low, medium, high")
+        return normalized
+    
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v):
+        """Normalize status to lowercase."""
+        if v is None:
+            return "open"  # Default value
+        normalized = str(v).lower().strip()
+        # Validate against allowed values
+        if normalized not in ("open", "in_progress", "closed"):
+            raise ValueError("Status must be one of: open, in_progress, closed")
+        return normalized
+
 class IssueCreate(IssueBase):
     """Schema for creating new issues with automation options."""
     project_id: int
@@ -89,6 +113,30 @@ class IssueUpdate(BaseModel):
     status: Optional[str] = None
     assignee: Optional[str] = None
     tag_names: Optional[List[str]] = None 
+
+    @field_validator('priority', mode='before')
+    @classmethod
+    def normalize_priority(cls, v):
+        """Normalize priority to lowercase."""
+        if v is None:
+            raise ValueError("Priority is required")
+        normalized = str(v).lower().strip()
+        # Validate against allowed values
+        if normalized not in ("low", "medium", "high"):
+            raise ValueError("Priority must be one of: low, medium, high")
+        return normalized
+    
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v):
+        """Normalize status to lowercase."""
+        if v is None:
+            return "open"  # Default value
+        normalized = str(v).lower().strip()
+        # Validate against allowed values
+        if normalized not in ("open", "in_progress", "closed"):
+            raise ValueError("Status must be one of: open, in_progress, closed")
+        return normalized
     
 class IssueOut(IssueBase):
     issue_id: int

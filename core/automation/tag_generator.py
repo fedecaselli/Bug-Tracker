@@ -21,7 +21,7 @@ class TagGenerator:
         """
         Initialize the TagGenerator class with predefined keyword categories.
         """
-        self.keywords = {
+        self._keywords = {
             "bug": ["error", "bug", "fail", "crash", "broken", "issue"],
             "frontend": ["ui", "frontend", "interface", "button", "form", "page"],
             "backend": ["backend", "server", "api", "database", "db"],
@@ -46,7 +46,7 @@ class TagGenerator:
         
         suggested_tags = []
         
-        for tag, keywords in self.keywords.items():
+        for tag, keywords in self._keywords.items():
             for keyword in keywords:
                 if keyword in text:
                 # If a keyword is found in the text, add the tag and stop checking further keywords

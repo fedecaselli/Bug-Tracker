@@ -1,9 +1,3 @@
-from sqlalchemy import Column, Integer, String, CheckConstraint, Text, DateTime, func, ForeignKey, Table, Index
-from sqlalchemy.orm import validates, relationship
-from .db import Base 
-
-
-
 """
 Database Models 
 
@@ -13,6 +7,10 @@ This module defines the SQLAlchemy ORM models for:
 - Tags: Labelig system for categorizing issues
 - Association table for many-to-many relationship between issues and tags
 """
+
+from sqlalchemy import Column, Integer, String, CheckConstraint, Text, DateTime, func, ForeignKey, Table, Index
+from sqlalchemy.orm import validates, relationship
+from .db import Base 
 
 # ASSOCIATION TABLES
 

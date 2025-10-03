@@ -489,7 +489,7 @@ def list_issue(
                                 status=status,
                                 title=title,
                                 project_id=final_project_id,
-                                tags=tag_filter,
+                                tags=tag_names,
                                 tags_match_all=tags_match_all)
         # Handle empty results
         if not rows:
@@ -500,7 +500,11 @@ def list_issue(
             # Format tags
             tag_names = [tag.name for tag in issue.tags] if issue.tags else []
             tags_str = f"{', '.join(tag_names)}" if tag_names else "none" 
-            typer.echo(f"Issue id: {issue.issue_id:} \ntitle: {issue.title} \ndescription: {issue.description} \nlog: {issue.log} \nsummary: {issue.summary} \npriority: {issue.priority}\nstatus: {issue.status} \nassignee: {issue.assignee} \ntags: {tags_str} \nproject_id{issue.project_id} \n{project_name}")
+            if project_name:
+                project_display = project_name
+            else:
+                project_name = ""
+            typer.echo(f"Issue id: {issue.issue_id:} \ntitle: {issue.title} \ndescription: {issue.description} \nlog: {issue.log} \nsummary: {issue.summary} \npriority: {issue.priority}\nstatus: {issue.status} \nassignee: {issue.assignee} \ntags: {tags_str} \nproject_id{issue.project_id} \nproject_name:{project_display}")
 
 
 @issue_app.command("update")

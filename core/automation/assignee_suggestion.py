@@ -50,7 +50,7 @@ class AssigneeSuggester:
             return None
         
         # Retrieve all assignees associated with the issue's tags
-        assignees = self.get_assignees_with_tags(db, issue_tags)
+        assignees = self._get_assignees_with_tags(db, issue_tags)
         
         best_assignee = None
         best_score = float('-inf')
@@ -61,8 +61,8 @@ class AssigneeSuggester:
 
             # Calculate success rate for each tag
             for tag in issue_tags:
-                resolved_tag_count = self.count_tags(db,tag,assignee)
-                total_tag_count = self.total_tag_count(db,tag,assignee)
+                resolved_tag_count = self._count_tags(db,tag,assignee)
+                total_tag_count = self._total_tag_count(db,tag,assignee)
                 
     
                 if total_tag_count > 0:
@@ -75,7 +75,7 @@ class AssigneeSuggester:
             
             # Calculate the average success rate and apply a workload penalty
             avg_success_rate = sum(tag_scores) / len(tag_scores)
-            current_workload = self.count_workload(db, assignee)
+            current_workload = self._count_workload(db, assignee)
             score = avg_success_rate - current_workload * 10 # Penalize for high workload
 
             # Update the best assignee if the current one has a higher score
@@ -124,7 +124,7 @@ class AssigneeSuggester:
 
          
     
-    def count_tags(self, db:Session, tag_name:str, assignee: str) -> int:
+    def _count_tags(self, db:Session, tag_name:str, assignee: str) -> int:
         """
         Count the number of closed issues with a specific tag resolved by an assignee.
 
@@ -138,7 +138,7 @@ class AssigneeSuggester:
         """
         return db.query(Issue).join(Issue.tags).filter(and_(Issue.assignee==assignee, Tag.name==tag_name, Issue.status=='closed')).count()
     
-    def total_tag_count(self, db:Session, tag_name: str, assignee: str) -> int:
+    def _total_tag_count(self, db:Session, tag_name: str, assignee: str) -> int:
         """
         Count the total number of issues with a specific tag assigned to an assignee.
 
@@ -153,7 +153,7 @@ class AssigneeSuggester:
         return db.query(Issue).join(Issue.tags).filter(and_(Issue.assignee == assignee, Tag.name==tag_name)).count()
 
     #Count current workload not to overwhelm assignee 
-    def count_workload(self,db:Session,assignee:str) -> int:
+    def _count_workload(self,db:Session,assignee:str) -> int:
         """
         Count the number of open or in-progress issues assigned to an assignee.
 
@@ -166,7 +166,7 @@ class AssigneeSuggester:
         """
         return db.query(Issue).filter(and_(Issue.assignee==assignee,Issue.status!='closed')).count()
 
-    def get_assignees_with_tags(self, db:Session, issue_tags: List[str]) -> List[str]:
+    def _get_assignees_with_tags(self, db:Session, issue_tags: List[str]) -> List[str]:
         """
         Retrieve a list of assignees associated with specific tags.
 

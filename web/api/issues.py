@@ -13,7 +13,7 @@ Key Features:
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 from fastapi import Query
 from core import schemas
 from core.db import get_db
@@ -130,11 +130,6 @@ def get_issue(issue_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
         
 
-'''
-@router.get("/", response_model=list[schemas.IssueOut])
-def list_issues(db: Session = Depends(get_db)):
-    return repo_issues.list_issues(db)
-'''
 
 #LIST ISSUES
 @router.get("/", response_model=list[schemas.IssueOut])

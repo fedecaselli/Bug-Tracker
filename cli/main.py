@@ -288,8 +288,8 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
             tag_list = tags.split(",")
             for tag in tag_list:
                 stripped_tag = tag.strip()
-            if stripped_tag:
-                tag_names.append(stripped_tag)
+                if stripped_tag:
+                    tag_names.append(stripped_tag)
                 
         final_project_id = None
         
@@ -424,8 +424,8 @@ def list_issue(
             tag_list = tags.split(",")
             for tag in tag_list:
                 stripped_tag = tag.strip()
-            if stripped_tag:
-                tag_names.append(stripped_tag)
+                if stripped_tag:
+                    tag_names.append(stripped_tag)
 
         
         final_project_id = None
@@ -685,6 +685,5 @@ def list_tags(
             typer.echo("Available Tags:")
             for tag in tags:
                 typer.echo(f"ID: {tag.tag_id}\tName: {tag.name}")
-
 
 

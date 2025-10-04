@@ -1,0 +1,733 @@
+{% extends "base.html" %}
+
+{% block title %}Issues - Bug Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="fas fa-exclamation-triangle"></i>
+        Issues
+    </h1>
+    <div class="page-actions">
+        <button class="btn btn-primary" onclick="showCreateIssueModal()">
+            <i class="fas fa-plus"></i>
+            New Issue
+        </button>
+    </div>
+</div>
+
+<!-- Search and Filters -->
+<div class="filters">
+    <div class="filters-row">
+        <div class="form-group">
+            <div class="search-container">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="issue-search" class="form-control search-input" 
+                       placeholder="Search issues..." onkeyup="searchIssues()">
+            </div>
+        </div>
+        <div class="form-group">
+            <select id="status-filter" class="form-control" onchange="applyFilters()">
+                <option value="">All Statuses</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="closed">Closed</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <select id="priority-filter" class="form-control" onchange="applyFilters()">
+                <option value="">All Priorities</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <select id="project-filter" class="form-control" onchange="applyFilters()">
+                <option value="">All Projects</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <input type="text" id="assignee-filter" class="form-control" 
+                   placeholder="Filter by assignee..." onkeyup="applyFilters()">
+        </div>
+        <div class="form-group">
+            <button class="btn btn-secondary" onclick="clearFilters()">
+                <i class="fas fa-times"></i>
+                Clear
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Issues Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="flex justify-between items-center">
+            <h3 class="card-title">All Issues</h3>
+            <div class="text-sm text-muted">
+                <span id="issues-count">0</span> issues found
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="issues-container">
+            <div class="text-center text-muted">Loading issues...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Issue Details Modal -->
+<div id="issue-modal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="issue-modal-title">Issue Details</h3>
+            <button class="modal-close" onclick="closeIssueModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="issue-details">
+                <!-- Issue details will be loaded here -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeIssueModal()">Close</button>
+            <button class="btn btn-info" onclick="autoAssignCurrentIssue()" id="auto-assign-btn">
+                <i class="fas fa-user-plus"></i>
+                Auto Assign
+            </button>
+            <button class="btn btn-warning" onclick="editCurrentIssue()" id="edit-issue-btn">
+                <i class="fas fa-edit"></i>
+                Edit
+            </button>
+            <button class="btn btn-danger" onclick="confirmDeleteCurrentIssue()" id="delete-issue-btn">
+                <i class="fas fa-trash"></i>
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Issue Form Modal -->
+<div id="issue-form-modal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="issue-form-title">Create New Issue</h3>
+            <button class="modal-close" onclick="closeIssueFormModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="issue-form" onsubmit="handleIssueSubmit(event)">
+                <div class="form-group">
+                    <label for="issue-project" class="form-label">Project *</label>
+                    <select id="issue-project" name="project_id" class="form-control" required>
+                        <option value="">Select project</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="issue-title" class="form-label">Title *</label>
+                    <input type="text" id="issue-title" name="title" class="form-control" 
+                           required maxlength="100" placeholder="Brief description of the issue">
+                </div>
+                
+                <div class="form-group">
+                    <label for="issue-description" class="form-label">Description</label>
+                    <textarea id="issue-description" name="description" class="form-control" 
+                              rows="3" placeholder="Detailed description..."></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="issue-priority" class="form-label">Priority *</label>
+                        <select id="issue-priority" name="priority" class="form-control" required>
+                            <option value="">Select priority</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="issue-status" class="form-label">Status</label>
+                        <select id="issue-status" name="status" class="form-control">
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="closed">Closed</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="issue-assignee" class="form-label">Assignee</label>
+                    <input type="text" id="issue-assignee" name="assignee" class="form-control" 
+                           placeholder="Username or email">
+                </div>
+                
+                <div class="form-group">
+                    <label for="issue-log" class="form-label">Error Log</label>
+                    <textarea id="issue-log" name="log" class="form-control" 
+                              rows="3" placeholder="Error logs or stack traces..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="issue-summary" class="form-label">Summary</label>
+                    <textarea id="issue-summary" name="summary" class="form-control" 
+                              rows="2" placeholder="Brief summary or notes..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Tags</label>
+                    <div id="issue-tags-container"></div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="form-check">
+                        <input type="checkbox" id="auto-generate-tags" name="auto_generate_tags">
+                        <label for="auto-generate-tags">Auto-generate tags based on title, description, and logs</label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="form-check">
+                        <input type="checkbox" id="auto-generate-assignee" name="auto_generate_assignee">
+                        <label for="auto-generate-assignee">Auto-assign to best available team member</label>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeIssueFormModal()">Cancel</button>
+            <button class="btn btn-warning" onclick="suggestTagsForIssue()" id="suggest-tags-btn">
+                <i class="fas fa-lightbulb"></i>
+                Suggest Tags
+            </button>
+            <button class="btn btn-primary" onclick="submitIssueForm()" id="submit-issue-btn">
+                <i class="fas fa-save"></i>
+                Create Issue
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allIssues = [];
+let filteredIssues = [];
+let allProjects = [];
+let currentIssue = null;
+let issueTagManager = null;
+let editingIssue = false;
+
+// Load initial data
+async function loadData() {
+    try {
+        const [issues, projects] = await Promise.all([
+            api.getIssues(),
+            api.getProjects()
+        ]);
+        
+        allIssues = issues;
+        allProjects = projects;
+        
+        populateProjectFilters();
+        applyFilters();
+    } catch (error) {
+        console.error('Failed to load data:', error);
+        document.getElementById('issues-container').innerHTML = 
+            '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><p>Failed to load issues</p></div>';
+    }
+}
+
+function populateProjectFilters() {
+    const projectFilter = document.getElementById('project-filter');
+    const issueProjectSelect = document.getElementById('issue-project');
+    
+    // Clear existing options (keep "All Projects" for filter)
+    projectFilter.innerHTML = '<option value="">All Projects</option>';
+    issueProjectSelect.innerHTML = '<option value="">Select project</option>';
+    
+    allProjects.forEach(project => {
+        projectFilter.innerHTML += `<option value="${project.project_id}">${escapeHtml(project.name)}</option>`;
+        issueProjectSelect.innerHTML += `<option value="${project.project_id}">${escapeHtml(project.name)}</option>`;
+    });
+}
+
+// Filtering and search
+const searchIssues = debounce(function() {
+    applyFilters();
+}, 300);
+
+function applyFilters() {
+    const searchQuery = document.getElementById('issue-search').value.toLowerCase().trim();
+    const statusFilter = document.getElementById('status-filter').value;
+    const priorityFilter = document.getElementById('priority-filter').value;
+    const projectFilter = document.getElementById('project-filter').value;
+    const assigneeFilter = document.getElementById('assignee-filter').value.toLowerCase().trim();
+    
+    filteredIssues = allIssues.filter(issue => {
+        // Search in title and description
+        const matchesSearch = !searchQuery || 
+            issue.title.toLowerCase().includes(searchQuery) ||
+            (issue.description && issue.description.toLowerCase().includes(searchQuery));
+        
+        const matchesStatus = !statusFilter || issue.status === statusFilter;
+        const matchesPriority = !priorityFilter || issue.priority === priorityFilter;
+        const matchesProject = !projectFilter || issue.project_id.toString() === projectFilter;
+        const matchesAssignee = !assigneeFilter || 
+            (issue.assignee && issue.assignee.toLowerCase().includes(assigneeFilter));
+        
+        return matchesSearch && matchesStatus && matchesPriority && matchesProject && matchesAssignee;
+    });
+    
+    displayIssues(filteredIssues);
+    updateURLParams({
+        search: searchQuery || null,
+        status: statusFilter || null,
+        priority: priorityFilter || null,
+        project: projectFilter || null,
+        assignee: assigneeFilter || null
+    });
+}
+
+function clearFilters() {
+    document.getElementById('issue-search').value = '';
+    document.getElementById('status-filter').value = '';
+    document.getElementById('priority-filter').value = '';
+    document.getElementById('project-filter').value = '';
+    document.getElementById('assignee-filter').value = '';
+    applyFilters();
+}
+
+function displayIssues(issues) {
+    const container = document.getElementById('issues-container');
+    document.getElementById('issues-count').textContent = issues.length;
+    
+    if (issues.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-clipboard-list"></i>
+                <p>No issues found</p>
+                <button class="btn btn-primary mt-4" onclick="showCreateIssueModal()">
+                    <i class="fas fa-plus"></i>
+                    Create New Issue
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Project</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Assignee</th>
+                        <th>Tags</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${issues.map(issue => {
+                        const project = allProjects.find(p => p.project_id === issue.project_id);
+                        return `
+                            <tr onclick="viewIssue(${issue.issue_id})" class="cursor-pointer hover:bg-gray-50">
+                                <td>
+                                    <div class="font-medium">${escapeHtml(issue.title)}</div>
+                                    ${issue.description ? 
+                                        `<div class="text-sm text-muted">${truncateText(issue.description, 60)}</div>` : ''
+                                    }
+                                </td>
+                                <td class="text-sm">${project ? escapeHtml(project.name) : 'Unknown'}</td>
+                                <td>
+                                    <span class="badge ${getStatusBadgeClass(issue.status)}">
+                                        ${issue.status.replace('_', ' ')}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="${getPriorityClass(issue.priority)}">
+                                        <i class="${getPriorityIcon(issue.priority)}"></i>
+                                        ${issue.priority}
+                                    </span>
+                                </td>
+                                <td class="text-sm">${issue.assignee || '-'}</td>
+                                <td class="text-sm">
+                                    ${issue.tags ? issue.tags.map(tag => 
+                                        `<span class="badge badge-secondary">${escapeHtml(tag.name)}</span>`
+                                    ).join(' ') : '-'}
+                                </td>
+                                <td class="text-sm">${formatRelativeDate(issue.created_at)}</td>
+                                <td onclick="event.stopPropagation()">
+                                    <div class="action-buttons">
+                                        <button class="btn btn-sm btn-secondary" onclick="viewIssue(${issue.issue_id})" title="View">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" onclick="editIssue(${issue.issue_id})" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" onclick="confirmDeleteIssue(${issue.issue_id})" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Issue modals and actions
+async function viewIssue(issueId) {
+    try {
+        currentIssue = await api.getIssue(issueId);
+        const project = allProjects.find(p => p.project_id === currentIssue.project_id);
+        
+        document.getElementById('issue-modal-title').textContent = currentIssue.title;
+        document.getElementById('issue-details').innerHTML = `
+            <div class="space-y-4">
+                <div>
+                    <label class="font-medium text-sm text-muted">Project:</label>
+                    <div>${project ? escapeHtml(project.name) : 'Unknown'}</div>
+                </div>
+                
+                ${currentIssue.description ? `
+                    <div>
+                        <label class="font-medium text-sm text-muted">Description:</label>
+                        <div class="mt-1">${escapeHtml(currentIssue.description)}</div>
+                    </div>
+                ` : ''}
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="font-medium text-sm text-muted">Status:</label>
+                        <div class="mt-1">
+                            <span class="badge ${getStatusBadgeClass(currentIssue.status)}">
+                                ${currentIssue.status.replace('_', ' ')}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="font-medium text-sm text-muted">Priority:</label>
+                        <div class="mt-1">
+                            <span class="${getPriorityClass(currentIssue.priority)}">
+                                <i class="${getPriorityIcon(currentIssue.priority)}"></i>
+                                ${currentIssue.priority}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="font-medium text-sm text-muted">Assignee:</label>
+                    <div class="mt-1">${currentIssue.assignee || 'Unassigned'}</div>
+                </div>
+                
+                ${currentIssue.tags && currentIssue.tags.length > 0 ? `
+                    <div>
+                        <label class="font-medium text-sm text-muted">Tags:</label>
+                        <div class="mt-1">
+                            ${currentIssue.tags.map(tag => 
+                                `<span class="badge badge-primary">${escapeHtml(tag.name)}</span>`
+                            ).join(' ')}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${currentIssue.log ? `
+                    <div>
+                        <label class="font-medium text-sm text-muted">Error Log:</label>
+                        <div class="mt-1 p-3 bg-gray-100 rounded text-sm font-mono">
+                            ${escapeHtml(currentIssue.log)}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${currentIssue.summary ? `
+                    <div>
+                        <label class="font-medium text-sm text-muted">Summary:</label>
+                        <div class="mt-1">${escapeHtml(currentIssue.summary)}</div>
+                    </div>
+                ` : ''}
+                
+                <div class="text-xs text-muted">
+                    Created: ${formatDate(currentIssue.created_at)}
+                    ${currentIssue.updated_at ? ` • Updated: ${formatDate(currentIssue.updated_at)}` : ''}
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('issue-modal').classList.remove('hidden');
+    } catch (error) {
+        showToast('Failed to load issue details', 'error');
+    }
+}
+
+function closeIssueModal() {
+    document.getElementById('issue-modal').classList.add('hidden');
+    currentIssue = null;
+}
+
+function showCreateIssueModal() {
+    editingIssue = false;
+    document.getElementById('issue-form-title').textContent = 'Create New Issue';
+    document.getElementById('submit-issue-btn').innerHTML = '<i class="fas fa-save"></i> Create Issue';
+    document.getElementById('issue-form').reset();
+    document.getElementById('issue-status').value = 'open';
+    
+    // Initialize tag manager
+    if (issueTagManager) {
+        issueTagManager.setTags([]);
+    } else {
+        issueTagManager = new TagManager('issue-tags-container', {
+            placeholder: 'Add tags...',
+            suggestions: []
+        });
+    }
+    
+    // Load existing tags for suggestions
+    api.getTags().then(tags => {
+        issueTagManager.options.suggestions = tags.map(tag => tag.name);
+    }).catch(console.error);
+    
+    document.getElementById('issue-form-modal').classList.remove('hidden');
+}
+
+function editIssue(issueId) {
+    console.log('Edit issue called with ID:', issueId);
+    const issue = allIssues.find(i => i.issue_id === issueId);
+    if (!issue) {
+        console.error('Issue not found:', issueId);
+        return;
+    }
+    
+    console.log('Found issue to edit:', issue);
+    editingIssue = true;
+    currentIssue = issue;
+    
+    document.getElementById('issue-form-title').textContent = 'Edit Issue';
+    document.getElementById('submit-issue-btn').innerHTML = '<i class="fas fa-save"></i> Update Issue';
+    
+    // Populate form
+    document.getElementById('issue-project').value = issue.project_id;
+    document.getElementById('issue-title').value = issue.title;
+    document.getElementById('issue-description').value = issue.description || '';
+    document.getElementById('issue-priority').value = issue.priority;
+    document.getElementById('issue-status').value = issue.status;
+    document.getElementById('issue-assignee').value = issue.assignee || '';
+    document.getElementById('issue-log').value = issue.log || '';
+    document.getElementById('issue-summary').value = issue.summary || '';
+    
+    console.log('Form populated with values');
+    
+    // Initialize tag manager with existing tags
+    if (issueTagManager) {
+        issueTagManager.setTags(issue.tags ? issue.tags.map(tag => tag.name) : []);
+    } else {
+        issueTagManager = new TagManager('issue-tags-container', {
+            placeholder: 'Add tags...',
+            suggestions: []
+        });
+        issueTagManager.setTags(issue.tags ? issue.tags.map(tag => tag.name) : []);
+    }
+    
+    console.log('Tag manager initialized');
+    
+    // Load existing tags for suggestions
+    api.getTags().then(tags => {
+        issueTagManager.options.suggestions = tags.map(tag => tag.name);
+        console.log('Tag suggestions loaded');
+    }).catch(console.error);
+    
+    document.getElementById('issue-form-modal').classList.remove('hidden');
+    console.log('Edit modal opened');
+}
+
+function closeIssueFormModal() {
+    document.getElementById('issue-form-modal').classList.add('hidden');
+}
+
+async function handleIssueSubmit(event) {
+    event.preventDefault();
+    submitIssueForm();
+}
+
+async function submitIssueForm() {
+    console.log('Submitting issue form, editing mode:', editingIssue);
+    const form = document.getElementById('issue-form');
+    if (!validateForm(form)) {
+        console.log('Form validation failed');
+        return;
+    }
+
+    const formData = new FormData(form);
+    const issueData = {
+        project_id: parseInt(formData.get('project_id')),
+        title: formData.get('title').trim(),
+        description: formData.get('description').trim() || null,
+        priority: formData.get('priority'),
+        status: formData.get('status'),
+        assignee: formData.get('assignee').trim() || null,
+        log: formData.get('log').trim() || null,
+        summary: formData.get('summary').trim() || null,
+        tag_names: issueTagManager ? issueTagManager.getTags() : []
+    };
+
+    console.log('Issue data to submit:', issueData);
+
+    if (!editingIssue) {
+        issueData.auto_generate_tags = document.getElementById('auto-generate-tags').checked;
+        issueData.auto_generate_assignee = document.getElementById('auto-generate-assignee').checked;
+    }
+
+    try {
+        if (editingIssue && currentIssue) {
+            console.log('Updating issue:', currentIssue.issue_id);
+            await api.updateIssue(currentIssue.issue_id, issueData);
+            showToast('Issue updated successfully', 'success');
+        } else {
+            console.log('Creating new issue');
+            await api.createIssue(issueData);
+            showToast('Issue created successfully', 'success');
+        }
+        
+        closeIssueFormModal();
+        loadData(); // Refresh the data
+    } catch (error) {
+        console.error('Error submitting issue:', error);
+        // Error already shown by API client
+    }
+}
+
+async function suggestTagsForIssue() {
+    const title = document.getElementById('issue-title').value.trim();
+    const description = document.getElementById('issue-description').value.trim();
+    const log = document.getElementById('issue-log').value.trim();
+    
+    if (!title) {
+        showToast('Please enter a title first', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await api.suggestTags(title, description || null, log || null);
+        const suggestedTags = response.suggested_tags || [];
+        
+        if (suggestedTags.length > 0) {
+            const currentTags = issueTagManager ? issueTagManager.getTags() : [];
+            const newTags = [...new Set([...currentTags, ...suggestedTags])];
+            
+            if (issueTagManager) {
+                issueTagManager.setTags(newTags);
+            }
+            
+            showToast(`Added ${suggestedTags.length} suggested tags`, 'success');
+        } else {
+            showToast('No tags were suggested for this issue', 'info');
+        }
+    } catch (error) {
+        showToast('Failed to get tag suggestions', 'error');
+    }
+}
+
+// Issue actions from details modal
+function editCurrentIssue() {
+    if (!currentIssue) return;
+    const issueId = currentIssue.issue_id;
+    closeIssueModal();
+    editIssue(issueId);
+}
+
+function confirmDeleteCurrentIssue() {
+    if (!currentIssue) return;
+    
+    showModal(
+        'Delete Issue',
+        `Are you sure you want to delete the issue "<strong>${escapeHtml(currentIssue.title)}</strong>"?`,
+        'Delete',
+        deleteCurrentIssue
+    );
+}
+
+async function deleteCurrentIssue() {
+    if (!currentIssue) return;
+    
+    try {
+        await api.deleteIssue(currentIssue.issue_id);
+        showToast('Issue deleted successfully', 'success');
+        closeIssueModal();
+        loadData(); // Refresh the data
+    } catch (error) {
+        showToast('Failed to delete issue', 'error');
+    }
+}
+
+async function autoAssignCurrentIssue() {
+    if (!currentIssue) return;
+    
+    try {
+        const response = await api.autoAssignIssue(currentIssue.issue_id);
+        showToast('Issue auto-assigned successfully', 'success');
+        
+        // Refresh the issue details
+        await viewIssue(currentIssue.issue_id);
+        loadData(); // Refresh the main list
+    } catch (error) {
+        showToast('Failed to auto-assign issue', 'error');
+    }
+}
+
+function confirmDeleteIssue(issueId) {
+    const issue = allIssues.find(i => i.issue_id === issueId);
+    if (!issue) return;
+    
+    showModal(
+        'Delete Issue',
+        `Are you sure you want to delete the issue "<strong>${escapeHtml(issue.title)}</strong>"?`,
+        'Delete',
+        () => deleteIssue(issueId)
+    );
+}
+
+async function deleteIssue(issueId) {
+    try {
+        await api.deleteIssue(issueId);
+        showToast('Issue deleted successfully', 'success');
+        loadData(); // Refresh the data
+    } catch (error) {
+        showToast('Failed to delete issue', 'error');
+    }
+}
+
+// Load data when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadData();
+    
+    // Apply URL parameters if any
+    const params = getURLParams();
+    if (params.search) document.getElementById('issue-search').value = params.search;
+    if (params.status) document.getElementById('status-filter').value = params.status;
+    if (params.priority) document.getElementById('priority-filter').value = params.priority;
+    if (params.project) document.getElementById('project-filter').value = params.project;
+    if (params.assignee) document.getElementById('assignee-filter').value = params.assignee;
+    
+    // Open specific issue if requested
+    if (params.issue) {
+        setTimeout(() => viewIssue(parseInt(params.issue)), 500);
+    } else if (params.edit) {
+        setTimeout(() => editIssue(parseInt(params.edit)), 500);
+    }
+});
+</script>
+{% endblock %}

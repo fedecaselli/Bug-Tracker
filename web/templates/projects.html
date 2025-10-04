@@ -1,0 +1,577 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - Bug Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="fas fa-folder"></i>
+        Projects
+    </h1>
+    <div class="page-actions">
+        <button class="btn btn-primary" onclick="showCreateProjectModal()">
+            <i class="fas fa-plus"></i>
+            New Project
+        </button>
+    </div>
+</div>
+
+<!-- Search and Filters -->
+<div class="filters">
+    <div class="filters-row">
+        <div class="form-group">
+            <div class="search-container">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="project-search" class="form-control search-input" 
+                       placeholder="Search projects..." onkeyup="searchProjects()">
+            </div>
+        </div>
+        <div class="form-group">
+            <button class="btn btn-secondary" onclick="clearFilters()">
+                <i class="fas fa-times"></i>
+                Clear
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Projects Grid -->
+<div id="projects-container" class="grid grid-cols-3">
+    <div class="text-center text-muted">Loading projects...</div>
+</div>
+
+<!-- Project Details Modal -->
+<div id="project-modal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="project-modal-title">Project Details</h3>
+            <button class="modal-close" onclick="closeProjectModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="project-details">
+                <!-- Project details will be loaded here -->
+            </div>
+            
+            <!-- Project Issues Section -->
+            <div class="mt-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h4>Issues in this Project</h4>
+                    <button class="btn btn-sm btn-primary" onclick="showCreateIssueModal()">
+                        <i class="fas fa-plus"></i>
+                        Add Issue
+                    </button>
+                </div>
+                <div id="project-issues-list">
+                    <div class="text-center text-muted">Loading issues...</div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeProjectModal()">Close</button>
+            <button class="btn btn-warning" onclick="editProject()" id="edit-project-btn">
+                <i class="fas fa-edit"></i>
+                Edit
+            </button>
+            <button class="btn btn-danger" onclick="confirmDeleteProject()" id="delete-project-btn">
+                <i class="fas fa-trash"></i>
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Project Form Modal -->
+<div id="project-form-modal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="project-form-title">Create New Project</h3>
+            <button class="modal-close" onclick="closeProjectFormModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="project-form" onsubmit="handleProjectSubmit(event)">
+                <div class="form-group">
+                    <label for="project-name" class="form-label">Project Name *</label>
+                    <input type="text" id="project-name" name="name" class="form-control" 
+                           required maxlength="200" placeholder="Enter project name">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeProjectFormModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitProjectForm()" id="submit-project-btn">
+                <i class="fas fa-save"></i>
+                Create Project
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Create Issue Modal -->
+<div id="issue-form-modal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Create New Issue</h3>
+            <button class="modal-close" onclick="closeIssueFormModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="issue-form" onsubmit="handleIssueSubmit(event)">
+                <div class="form-group">
+                    <label for="issue-title" class="form-label">Title *</label>
+                    <input type="text" id="issue-title" name="title" class="form-control" 
+                           required maxlength="100" placeholder="Brief description of the issue">
+                </div>
+                
+                <div class="form-group">
+                    <label for="issue-description" class="form-label">Description</label>
+                    <textarea id="issue-description" name="description" class="form-control" 
+                              rows="3" placeholder="Detailed description..."></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="issue-priority" class="form-label">Priority *</label>
+                        <select id="issue-priority" name="priority" class="form-control" required>
+                            <option value="">Select priority</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="issue-assignee" class="form-label">Assignee</label>
+                        <input type="text" id="issue-assignee" name="assignee" class="form-control" 
+                               placeholder="Username or email">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="issue-log" class="form-label">Error Log</label>
+                    <textarea id="issue-log" name="log" class="form-control" 
+                              rows="3" placeholder="Error logs or stack traces..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Tags</label>
+                    <div id="issue-tags-container"></div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="form-check">
+                        <input type="checkbox" id="auto-generate-tags" name="auto_generate_tags">
+                        <label for="auto-generate-tags">Auto-generate tags based on title, description, and logs</label>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="form-check">
+                        <input type="checkbox" id="auto-generate-assignee" name="auto_generate_assignee">
+                        <label for="auto-generate-assignee">Auto-assign to best available team member</label>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeIssueFormModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitIssueForm()">
+                <i class="fas fa-save"></i>
+                Create Issue
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allProjects = [];
+let currentProject = null;
+let currentProjectIssues = [];
+let issueTagManager = null;
+let editingProject = false;
+
+// Load projects
+async function loadProjects() {
+    try {
+        allProjects = await api.getProjects();
+        displayProjects(allProjects);
+    } catch (error) {
+        console.error('Failed to load projects:', error);
+        document.getElementById('projects-container').innerHTML = 
+            '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><p>Failed to load projects</p></div>';
+    }
+}
+
+function displayProjects(projects) {
+    const container = document.getElementById('projects-container');
+    
+    if (projects.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-folder-open"></i>
+                <p>No projects found</p>
+                <button class="btn btn-primary mt-4" onclick="showCreateProjectModal()">
+                    <i class="fas fa-plus"></i>
+                    Create Your First Project
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = projects.map(project => `
+        <div class="card cursor-pointer hover:shadow-md transition-shadow" onclick="viewProject(${project.project_id})">
+            <div class="card-body">
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="font-semibold text-lg">${escapeHtml(project.name)}</h3>
+                    <div class="text-xs text-muted">
+                        ${formatRelativeDate(project.created_at)}
+                    </div>
+                </div>
+                <div id="project-${project.project_id}-stats" class="text-sm text-muted">
+                    Loading stats...
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    // Load stats for each project
+    projects.forEach(loadProjectStats);
+}
+
+async function loadProjectStats(project) {
+    try {
+        const issues = await api.getProjectIssues(project.project_id);
+        const openIssues = issues.filter(issue => issue.status === 'open').length;
+        const highPriorityIssues = issues.filter(issue => issue.priority === 'high').length;
+        
+        const statsElement = document.getElementById(`project-${project.project_id}-stats`);
+        if (statsElement) {
+            statsElement.innerHTML = `
+                <div class="flex justify-between">
+                    <span>${issues.length} total issues</span>
+                    <span class="text-warning">${openIssues} open</span>
+                </div>
+                ${highPriorityIssues > 0 ? 
+                    `<div class="text-danger mt-1">${highPriorityIssues} high priority</div>` : ''
+                }
+            `;
+        }
+    } catch (error) {
+        console.error(`Failed to load stats for project ${project.project_id}:`, error);
+    }
+}
+
+// Search projects
+const searchProjects = debounce(function() {
+    const query = document.getElementById('project-search').value.toLowerCase().trim();
+    
+    if (!query) {
+        displayProjects(allProjects);
+        return;
+    }
+    
+    const filtered = allProjects.filter(project =>
+        project.name.toLowerCase().includes(query)
+    );
+    
+    displayProjects(filtered);
+}, 300);
+
+function clearFilters() {
+    document.getElementById('project-search').value = '';
+    displayProjects(allProjects);
+}
+
+// Project modals
+function showCreateProjectModal() {
+    editingProject = false;
+    document.getElementById('project-form-title').textContent = 'Create New Project';
+    document.getElementById('submit-project-btn').innerHTML = '<i class="fas fa-save"></i> Create Project';
+    document.getElementById('project-form').reset();
+    document.getElementById('project-form-modal').classList.remove('hidden');
+}
+
+function closeProjectFormModal() {
+    document.getElementById('project-form-modal').classList.add('hidden');
+}
+
+async function viewProject(projectId) {
+    currentProject = allProjects.find(p => p.project_id === projectId);
+    if (!currentProject) return;
+
+    document.getElementById('project-modal-title').textContent = currentProject.name;
+    document.getElementById('project-details').innerHTML = `
+        <div class="mb-4">
+            <div class="text-sm text-muted mb-2">Created: ${formatDate(currentProject.created_at)}</div>
+        </div>
+    `;
+
+    document.getElementById('project-modal').classList.remove('hidden');
+    
+    // Load project issues
+    try {
+        currentProjectIssues = await api.getProjectIssues(projectId);
+        displayProjectIssues(currentProjectIssues);
+    } catch (error) {
+        console.error('Failed to load project issues:', error);
+        document.getElementById('project-issues-list').innerHTML = 
+            '<div class="text-center text-danger">Failed to load issues</div>';
+    }
+}
+
+function displayProjectIssues(issues) {
+    const container = document.getElementById('project-issues-list');
+    
+    if (issues.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-clipboard-list"></i>
+                <p>No issues in this project</p>
+                <button class="btn btn-primary mt-2" onclick="showCreateIssueModal()">
+                    Create First Issue
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Priority</th>
+                        <th>Assignee</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${issues.map(issue => `
+                        <tr>
+                            <td>
+                                <div class="font-medium">${escapeHtml(issue.title)}</div>
+                                ${issue.description ? 
+                                    `<div class="text-sm text-muted">${truncateText(issue.description, 60)}</div>` : ''
+                                }
+                            </td>
+                            <td>
+                                <span class="badge ${getStatusBadgeClass(issue.status)}">
+                                    ${issue.status.replace('_', ' ')}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="${getPriorityClass(issue.priority)}">
+                                    <i class="${getPriorityIcon(issue.priority)}"></i>
+                                    ${issue.priority}
+                                </span>
+                            </td>
+                            <td>${issue.assignee || '-'}</td>
+                            <td class="text-sm">${formatRelativeDate(issue.created_at)}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn btn-sm btn-secondary" onclick="viewIssueDetails(${issue.issue_id})" title="View">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-warning" onclick="editIssue(${issue.issue_id})" title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="confirmDeleteIssue(${issue.issue_id})" title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function closeProjectModal() {
+    document.getElementById('project-modal').classList.add('hidden');
+    currentProject = null;
+    currentProjectIssues = [];
+}
+
+function editProject() {
+    if (!currentProject) return;
+    
+    editingProject = true;
+    document.getElementById('project-form-title').textContent = 'Edit Project';
+    document.getElementById('submit-project-btn').innerHTML = '<i class="fas fa-save"></i> Update Project';
+    document.getElementById('project-name').value = currentProject.name;
+    document.getElementById('project-form-modal').classList.remove('hidden');
+}
+
+function confirmDeleteProject() {
+    if (!currentProject) return;
+    
+    showModal(
+        'Delete Project',
+        `Are you sure you want to delete the project "<strong>${escapeHtml(currentProject.name)}</strong>"? This will also delete all associated issues and cannot be undone.`,
+        'Delete',
+        deleteProject
+    );
+}
+
+async function deleteProject() {
+    if (!currentProject) return;
+    
+    try {
+        await api.deleteProject(currentProject.project_id);
+        showToast('Project deleted successfully', 'success');
+        closeProjectModal();
+        loadProjects(); // Refresh the list
+    } catch (error) {
+        showToast('Failed to delete project', 'error');
+    }
+}
+
+// Project form handling
+async function handleProjectSubmit(event) {
+    event.preventDefault();
+    submitProjectForm();
+}
+
+async function submitProjectForm() {
+    const form = document.getElementById('project-form');
+    if (!validateForm(form)) return;
+
+    const formData = new FormData(form);
+    const projectData = {
+        name: formData.get('name').trim()
+    };
+
+    try {
+        if (editingProject && currentProject) {
+            await api.updateProject(currentProject.project_id, projectData);
+            showToast('Project updated successfully', 'success');
+        } else {
+            await api.createProject(projectData);
+            showToast('Project created successfully', 'success');
+        }
+        
+        closeProjectFormModal();
+        loadProjects(); // Refresh the list
+    } catch (error) {
+        // Error already shown by API client
+    }
+}
+
+// Issue creation within project
+function showCreateIssueModal() {
+    if (!currentProject) return;
+    
+    document.getElementById('issue-form').reset();
+    
+    // Initialize tag manager
+    if (issueTagManager) {
+        issueTagManager.setTags([]);
+    } else {
+        issueTagManager = new TagManager('issue-tags-container', {
+            placeholder: 'Add tags...',
+            suggestions: [] // Will be populated when we load existing tags
+        });
+    }
+    
+    // Load existing tags for suggestions
+    api.getTags().then(tags => {
+        issueTagManager.options.suggestions = tags.map(tag => tag.name);
+    }).catch(console.error);
+    
+    document.getElementById('issue-form-modal').classList.remove('hidden');
+}
+
+function closeIssueFormModal() {
+    document.getElementById('issue-form-modal').classList.add('hidden');
+}
+
+async function submitIssueForm() {
+    const form = document.getElementById('issue-form');
+    if (!validateForm(form)) return;
+
+    const formData = new FormData(form);
+    const issueData = {
+        project_id: currentProject.project_id,
+        title: formData.get('title').trim(),
+        description: formData.get('description').trim() || null,
+        priority: formData.get('priority'),
+        assignee: formData.get('assignee').trim() || null,
+        log: formData.get('log').trim() || null,
+        tag_names: issueTagManager ? issueTagManager.getTags() : [],
+        auto_generate_tags: document.getElementById('auto-generate-tags').checked,
+        auto_generate_assignee: document.getElementById('auto-generate-assignee').checked
+    };
+
+    try {
+        await api.createIssue(issueData);
+        showToast('Issue created successfully', 'success');
+        closeIssueFormModal();
+        
+        // Refresh project issues
+        currentProjectIssues = await api.getProjectIssues(currentProject.project_id);
+        displayProjectIssues(currentProjectIssues);
+    } catch (error) {
+        // Error already shown by API client
+    }
+}
+
+// Issue actions (placeholder functions)
+function viewIssueDetails(issueId) {
+    // Redirect to issues page with specific issue
+    window.location.href = `/issues?issue=${issueId}`;
+}
+
+function editIssue(issueId) {
+    // Redirect to issues page for editing
+    window.location.href = `/issues?edit=${issueId}`;
+}
+
+function confirmDeleteIssue(issueId) {
+    const issue = currentProjectIssues.find(i => i.issue_id === issueId);
+    if (!issue) return;
+    
+    showModal(
+        'Delete Issue',
+        `Are you sure you want to delete the issue "<strong>${escapeHtml(issue.title)}</strong>"?`,
+        'Delete',
+        () => deleteIssue(issueId)
+    );
+}
+
+async function deleteIssue(issueId) {
+    try {
+        await api.deleteIssue(issueId);
+        showToast('Issue deleted successfully', 'success');
+        
+        // Refresh project issues
+        currentProjectIssues = await api.getProjectIssues(currentProject.project_id);
+        displayProjectIssues(currentProjectIssues);
+    } catch (error) {
+        showToast('Failed to delete issue', 'error');
+    }
+}
+
+// Load projects when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadProjects();
+    
+    // Check for URL parameters to open specific project
+    const params = getURLParams();
+    if (params.project) {
+        setTimeout(() => viewProject(parseInt(params.project)), 500);
+    }
+});
+</script>
+{% endblock %}

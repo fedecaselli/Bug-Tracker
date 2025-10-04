@@ -17,6 +17,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from core.models import Issue, Tag
+from core.repos.exceptions import NotFound  
 
 class AssigneeSuggester:
     """
@@ -87,7 +88,9 @@ class AssigneeSuggester:
             
             
             
-    def auto_assign(self, db:Session,issue_id:int) -> bool:
+
+
+    def auto_assign(self, db: Session, issue_id: int) -> bool:
         """
         Automatically assign an issue to the best assignee.
 
@@ -96,31 +99,33 @@ class AssigneeSuggester:
             issue_id (int): ID of the issue to assign.
 
         Returns:
-            bool: True if an assignee was successfully assigned, False otherwise.
+            bool: True if an assignee was successfully assigned.
+            
+        Raises:
+            NotFound: If no suitable assignee is found for the issue.
         """
         issue = db.query(Issue).filter(Issue.issue_id == issue_id).first()
         
         if not issue:
-            return False
+            raise NotFound(f"Issue with ID {issue_id} not found")
         
         # Extract tag names associated with the issue
         if issue.tags:
-            issue_tag_names = []
-            for tag in issue.tags:
-                issue_tag_names.append(tag.name)
+            issue_tag_names = [tag.name for tag in issue.tags]
         else:
             issue_tag_names = []
 
         # Suggest the best assignee
         suggested_assignee = self.suggest_assignee(db, issue_tag_names, issue.status, issue.priority)
         
-
         # Assign the issue if a suitable assignee is found
         if suggested_assignee:
             issue.assignee = suggested_assignee
             db.commit()
             return True
-        return False
+        else:
+            # Raise exception with detailed message
+            raise NotFound(f"No suitable assignee found for issue {issue_id} with tags {issue_tag_names}, status '{issue.status}', and priority '{issue.priority}'")
 
          
     

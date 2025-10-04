@@ -1,0 +1,659 @@
+{% extends "base.html" %}
+
+{% block title %}Tags - Bug Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="fas fa-tags"></i>
+        Tags Management
+    </h1>
+    <div class="page-actions">
+        <button class="btn btn-warning" onclick="cleanupUnusedTags()">
+            <i class="fas fa-broom"></i>
+            Cleanup Unused
+        </button>
+        <button class="btn btn-primary" onclick="refreshTagData()">
+            <i class="fas fa-sync-alt"></i>
+            Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Tag Statistics -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number" id="total-tags">-</div>
+        <div class="stat-label">Total Tags</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="used-tags">-</div>
+        <div class="stat-label">Used Tags</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="unused-tags">-</div>
+        <div class="stat-label">Unused Tags</div>
+    </div>
+</div>
+
+<!-- Tag Usage Chart -->
+<div class="card mb-6">
+    <div class="card-header">
+        <h3 class="card-title">Tag Usage Statistics</h3>
+        <div class="flex gap-2">
+            <button class="btn btn-sm btn-secondary" onclick="switchChartType('bar')" id="bar-chart-btn">
+                <i class="fas fa-chart-bar"></i>
+                Bar Chart
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="switchChartType('pie')" id="pie-chart-btn">
+                <i class="fas fa-chart-pie"></i>
+                Pie Chart
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="chart-container">
+            <canvas id="usage-chart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Search and Filters -->
+<div class="filters">
+    <div class="filters-row">
+        <div class="form-group">
+            <div class="search-container">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="tag-search" class="form-control search-input" 
+                       placeholder="Search tags..." onkeyup="searchTags()">
+            </div>
+        </div>
+        <div class="form-group">
+            <select id="usage-filter" class="form-control" onchange="applyFilters()">
+                <option value="">All Tags</option>
+                <option value="used">Used Tags</option>
+                <option value="unused">Unused Tags</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <select id="sort-order" class="form-control" onchange="applyFilters()">
+                <option value="name">Sort by Name</option>
+                <option value="usage">Sort by Usage</option>
+                <option value="recent">Sort by Recent</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <button class="btn btn-secondary" onclick="clearFilters()">
+                <i class="fas fa-times"></i>
+                Clear
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Tags Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="flex justify-between items-center">
+            <h3 class="card-title">All Tags</h3>
+            <div class="text-sm text-muted">
+                <span id="tags-count">0</span> tags found
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="tags-container">
+            <div class="text-center text-muted">Loading tags...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tag Details Modal -->
+<div id="tag-modal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="tag-modal-title">Tag Details</h3>
+            <button class="modal-close" onclick="closeTagModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="tag-details">
+                <!-- Tag details will be loaded here -->
+            </div>
+            
+            <!-- Issues using this tag -->
+            <div class="mt-6">
+                <h4 class="mb-3">Issues using this tag</h4>
+                <div id="tag-issues-list">
+                    <div class="text-center text-muted">Loading issues...</div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeTagModal()">Close</button>
+            <button class="btn btn-warning" onclick="showRenameTagModal()" id="rename-tag-btn">
+                <i class="fas fa-edit"></i>
+                Rename
+            </button>
+            <button class="btn btn-danger" onclick="confirmDeleteTag()" id="delete-tag-btn">
+                <i class="fas fa-trash"></i>
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Rename Tag Modal -->
+<div id="rename-tag-modal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Rename Tag</h3>
+            <button class="modal-close" onclick="closeRenameTagModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="rename-tag-form" onsubmit="handleRenameSubmit(event)">
+                <div class="form-group">
+                    <label for="old-tag-name" class="form-label">Current Name</label>
+                    <input type="text" id="old-tag-name" class="form-control" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="new-tag-name" class="form-label">New Name *</label>
+                    <input type="text" id="new-tag-name" name="new_name" class="form-control" 
+                           required maxlength="100" placeholder="Enter new tag name">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeRenameTagModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitRenameForm()">
+                <i class="fas fa-save"></i>
+                Rename Tag
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allTags = [];
+let tagStats = [];
+let filteredTags = [];
+let currentTag = null;
+let usageChart = null;
+let currentChartType = 'bar';
+
+// Load tag data
+async function loadTagData() {
+    try {
+        const [tags, stats] = await Promise.all([
+            api.getTags(),
+            api.getTagUsageStats()
+        ]);
+        
+        allTags = tags;
+        const usageCounts = new Map(stats.map(stat => [stat.tag_id, stat.issue_count]));
+        tagStats = allTags.map(tag => ({
+            tag_id: tag.tag_id,
+            tag_name: tag.name,
+            usage_count: usageCounts.get(tag.tag_id) || 0
+        }));
+        
+        updateStatistics();
+        updateChart();
+        applyFilters();
+    } catch (error) {
+        console.error('Failed to load tag data:', error);
+        document.getElementById('tags-container').innerHTML = 
+            '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><p>Failed to load tags</p></div>';
+    }
+}
+
+function updateStatistics() {
+    const totalTags = allTags.length;
+    const usedTags = tagStats.filter(tag => tag.usage_count > 0).length;
+    const unusedTags = Math.max(totalTags - usedTags, 0);
+
+    document.getElementById('total-tags').textContent = totalTags;
+    document.getElementById('used-tags').textContent = usedTags;
+    document.getElementById('unused-tags').textContent = unusedTags;
+}
+
+function updateChart() {
+    const topTags = [...tagStats]
+        .filter(tag => tag.usage_count > 0)
+        .sort((a, b) => b.usage_count - a.usage_count || a.tag_name.localeCompare(b.tag_name))
+        .slice(0, 15);
+
+    if (topTags.length === 0) {
+        if (usageChart) {
+            usageChart.destroy();
+            usageChart = null;
+        }
+        return;
+    }
+
+    const labels = topTags.map(tag => tag.tag_name);
+    const data = topTags.map(tag => tag.usage_count);
+
+    if (usageChart) {
+        usageChart.destroy();
+    }
+
+    const chartConfig = {
+        labels: labels,
+        datasets: [{
+            label: 'Usage Count',
+            data: data,
+            backgroundColor: currentChartType === 'pie' ? [
+                '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+                '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#6b7280',
+                '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
+            ] : '#3b82f6',
+            borderWidth: 0
+        }]
+    };
+    
+    const chartOptions = {
+        plugins: {
+            legend: {
+                display: currentChartType === 'pie',
+                position: 'right'
+            }
+        }
+    };
+    
+    if (currentChartType === 'bar') {
+        chartOptions.indexAxis = 'y';
+        chartOptions.scales = {
+            x: {
+                beginAtZero: true,
+                ticks: { stepSize: 1 }
+            }
+        };
+    }
+    
+    usageChart = createChart('usage-chart', currentChartType === 'pie' ? 'doughnut' : 'bar', chartConfig, chartOptions);
+}
+
+function switchChartType(type) {
+    currentChartType = type;
+    
+    // Update button states
+    document.getElementById('bar-chart-btn').classList.toggle('btn-primary', type === 'bar');
+    document.getElementById('bar-chart-btn').classList.toggle('btn-secondary', type !== 'bar');
+    document.getElementById('pie-chart-btn').classList.toggle('btn-primary', type === 'pie');
+    document.getElementById('pie-chart-btn').classList.toggle('btn-secondary', type !== 'pie');
+    
+    updateChart();
+}
+
+// Filtering and search
+const searchTags = debounce(function() {
+    applyFilters();
+}, 300);
+
+function applyFilters() {
+    const searchQuery = document.getElementById('tag-search').value.toLowerCase().trim();
+    const usageFilter = document.getElementById('usage-filter').value;
+    const sortOrder = document.getElementById('sort-order').value;
+    
+    // Create combined dataset with usage info
+    const usageMap = new Map(tagStats.map(stat => [stat.tag_id, stat.usage_count]));
+    const tagsWithUsage = allTags.map(tag => {
+        const usageCount = usageMap.get(tag.tag_id) || 0;
+        return {
+            ...tag,
+            usage_count: usageCount,
+            is_used: usageCount > 0
+        };
+    });
+    
+    // Filter tags
+    filteredTags = tagsWithUsage.filter(tag => {
+        const matchesSearch = !searchQuery || tag.name.toLowerCase().includes(searchQuery);
+        
+        let matchesUsage = true;
+        if (usageFilter === 'used') {
+            matchesUsage = tag.is_used;
+        } else if (usageFilter === 'unused') {
+            matchesUsage = !tag.is_used;
+        }
+        
+        return matchesSearch && matchesUsage;
+    });
+    
+    // Sort tags
+    filteredTags.sort((a, b) => {
+        switch (sortOrder) {
+            case 'usage':
+                return b.usage_count - a.usage_count;
+            case 'recent':
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            case 'name':
+            default:
+                return a.name.localeCompare(b.name);
+        }
+    });
+    
+    displayTags(filteredTags);
+}
+
+function clearFilters() {
+    document.getElementById('tag-search').value = '';
+    document.getElementById('usage-filter').value = '';
+    document.getElementById('sort-order').value = 'name';
+    applyFilters();
+}
+
+function displayTags(tags) {
+    const container = document.getElementById('tags-container');
+    document.getElementById('tags-count').textContent = tags.length;
+    
+    if (tags.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-tags"></i>
+                <p>No tags found</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Tag Name</th>
+                        <th>Usage Count</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tags.map(tag => `
+                        <tr onclick="viewTag(${tag.tag_id})" class="cursor-pointer hover:bg-gray-50">
+                            <td>
+                                <div class="flex items-center">
+                                    <span class="badge badge-primary mr-2">${escapeHtml(tag.name)}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="font-medium">${tag.usage_count}</span>
+                                ${tag.usage_count > 0 ? 
+                                    `<span class="text-sm text-muted ml-1">issues</span>` : ''
+                                }
+                            </td>
+                            <td>
+                                ${tag.is_used ? 
+                                    '<span class="badge badge-success">Used</span>' : 
+                                    '<span class="badge badge-warning">Unused</span>'
+                                }
+                            </td>
+                            <td onclick="event.stopPropagation()">
+                                <div class="action-buttons">
+                                    <button class="btn btn-sm btn-secondary" onclick="viewTag(${tag.tag_id})" title="View">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-warning" onclick="showRenameTagModalForTag(${tag.tag_id})" title="Rename">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="confirmDeleteTagById(${tag.tag_id})" title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Tag actions
+async function viewTag(tagId) {
+    currentTag = allTags.find(tag => tag.tag_id === tagId);
+    if (!currentTag) return;
+    
+    const usage = tagStats.find(stat => stat.tag_id === currentTag.tag_id);
+    const usageCount = usage ? usage.usage_count : 0;
+    
+    document.getElementById('tag-modal-title').textContent = `Tag: ${currentTag.name}`;
+    document.getElementById('tag-details').innerHTML = `
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="font-medium text-sm text-muted">Tag Name:</label>
+                    <div class="mt-1">
+                        <span class="badge badge-primary">${escapeHtml(currentTag.name)}</span>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="font-medium text-sm text-muted">Usage Count:</label>
+                    <div class="mt-1 font-medium">${usageCount} issues</div>
+                </div>
+            </div>
+            
+            <div>
+                <label class="font-medium text-sm text-muted">Status:</label>
+                <div class="mt-1">
+                    ${usageCount > 0 ? 
+                        '<span class="badge badge-success">Used</span>' : 
+                        '<span class="badge badge-warning">Unused</span>'
+                    }
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('tag-modal').classList.remove('hidden');
+    
+    // Load issues using this tag
+    if (usageCount > 0) {
+        loadTagIssues(currentTag.name);
+    } else {
+        document.getElementById('tag-issues-list').innerHTML = 
+            '<div class="empty-state">No issues use this tag</div>';
+    }
+}
+
+async function loadTagIssues(tagName) {
+    try {
+        const issues = await api.getIssues({ tags: tagName });
+        
+        if (issues.length === 0) {
+            document.getElementById('tag-issues-list').innerHTML = 
+                '<div class="empty-state">No issues found with this tag</div>';
+            return;
+        }
+        
+        document.getElementById('tag-issues-list').innerHTML = `
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                            <th>Assignee</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${issues.map(issue => `
+                            <tr class="cursor-pointer hover:bg-gray-50" onclick="window.location.href='/issues?issue=${issue.issue_id}'">
+                                <td>
+                                    <div class="font-medium">${escapeHtml(issue.title)}</div>
+                                    ${issue.description ? 
+                                        `<div class="text-sm text-muted">${truncateText(issue.description, 60)}</div>` : ''
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge ${getStatusBadgeClass(issue.status)}">
+                                        ${issue.status.replace('_', ' ')}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="${getPriorityClass(issue.priority)}">
+                                        <i class="${getPriorityIcon(issue.priority)}"></i>
+                                        ${issue.priority}
+                                    </span>
+                                </td>
+                                <td class="text-sm">${issue.assignee || '-'}</td>
+                                <td class="text-sm">${formatRelativeDate(issue.created_at)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Failed to load tag issues:', error);
+        document.getElementById('tag-issues-list').innerHTML = 
+            '<div class="text-center text-danger">Failed to load issues</div>';
+    }
+}
+
+function closeTagModal() {
+    document.getElementById('tag-modal').classList.add('hidden');
+    currentTag = null;
+}
+
+// Rename tag functionality
+function showRenameTagModal() {
+    if (!currentTag) return;
+    
+    document.getElementById('old-tag-name').value = currentTag.name;
+    document.getElementById('new-tag-name').value = currentTag.name;
+    document.getElementById('rename-tag-modal').classList.remove('hidden');
+}
+
+function showRenameTagModalForTag(tagId) {
+    const tag = allTags.find(t => t.tag_id === tagId);
+    if (!tag) return;
+    
+    currentTag = tag;
+    showRenameTagModal();
+}
+
+function closeRenameTagModal() {
+    document.getElementById('rename-tag-modal').classList.add('hidden');
+    document.getElementById('rename-tag-form').reset();
+}
+
+async function handleRenameSubmit(event) {
+    event.preventDefault();
+    submitRenameForm();
+}
+
+async function submitRenameForm() {
+    const form = document.getElementById('rename-tag-form');
+    if (!validateForm(form)) return;
+    
+    const newName = document.getElementById('new-tag-name').value.trim();
+    
+    if (newName === currentTag.name) {
+        showToast('New name is the same as current name', 'warning');
+        return;
+    }
+    
+    try {
+        await api.renameTag(currentTag.name, newName);
+        showToast('Tag renamed successfully', 'success');
+        
+        closeRenameTagModal();
+        closeTagModal();
+        refreshTagData();
+    } catch (error) {
+        // Error already shown by API client
+    }
+}
+
+// Delete tag functionality
+function confirmDeleteTag() {
+    if (!currentTag) return;
+    
+    const usage = tagStats.find(stat => stat.tag_id === currentTag.tag_id);
+    const usageCount = usage ? usage.usage_count : 0;
+    
+    const message = usageCount > 0 ? 
+        `Are you sure you want to delete the tag "<strong>${escapeHtml(currentTag.name)}</strong>"? This will remove it from ${usageCount} issue(s).` :
+        `Are you sure you want to delete the tag "<strong>${escapeHtml(currentTag.name)}</strong>"?`;
+    
+    showModal(
+        'Delete Tag',
+        message,
+        'Delete',
+        deleteCurrentTag
+    );
+}
+
+function confirmDeleteTagById(tagId) {
+    const tag = allTags.find(t => t.tag_id === tagId);
+    if (!tag) return;
+    
+    currentTag = tag;
+    confirmDeleteTag();
+}
+
+async function deleteCurrentTag() {
+    if (!currentTag) return;
+    
+    try {
+        await api.deleteTag(currentTag.tag_id);
+        showToast('Tag deleted successfully', 'success');
+        
+        closeTagModal();
+        refreshTagData();
+    } catch (error) {
+        showToast('Failed to delete tag', 'error');
+    }
+}
+
+// Cleanup unused tags
+async function cleanupUnusedTags() {
+    const unusedCount = tagStats.filter(tag => tag.usage_count === 0).length;
+    
+    if (unusedCount === 0) {
+        showToast('No unused tags to clean up', 'info');
+        return;
+    }
+    
+    showModal(
+        'Cleanup Unused Tags',
+        `Are you sure you want to delete all ${unusedCount} unused tags? This action cannot be undone.`,
+        'Cleanup',
+        performCleanup
+    );
+}
+
+async function performCleanup() {
+    try {
+        const response = await api.cleanupUnusedTags();
+        showToast(`Cleaned up ${response.count} unused tags`, 'success');
+        refreshTagData();
+    } catch (error) {
+        showToast('Failed to cleanup unused tags', 'error');
+    }
+}
+
+// Refresh data
+function refreshTagData() {
+    loadTagData();
+}
+
+// Load data when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadTagData();
+    
+    // Set initial chart type button state
+    switchChartType('bar');
+});
+</script>
+{% endblock %}

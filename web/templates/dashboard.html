@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Bug Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="fas fa-tachometer-alt"></i>
+        Dashboard
+    </h1>
+    <div class="page-actions">
+        <button class="btn btn-primary" onclick="refreshDashboard()">
+            <i class="fas fa-sync-alt"></i>
+            Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number" id="total-projects">-</div>
+        <div class="stat-label">Total Projects</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="total-issues">-</div>
+        <div class="stat-label">Total Issues</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="open-issues">-</div>
+        <div class="stat-label">Open Issues</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="high-priority-issues">-</div>
+        <div class="stat-label">High Priority</div>
+    </div>
+</div>
+
+<!-- Charts and Recent Activity -->
+<div class="grid grid-cols-2">
+    <!-- Issues by Status Chart -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Issues by Status</h3>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="status-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Issues by Priority Chart -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Issues by Priority</h3>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="priority-chart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Issues and Projects -->
+<div class="grid grid-cols-2 mt-6">
+    <!-- Recent Issues -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Recent Issues</h3>
+            <a href="/issues" class="btn btn-sm btn-secondary">View All</a>
+        </div>
+        <div class="card-body">
+            <div id="recent-issues-list">
+                <div class="text-center text-muted">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Projects -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Projects Overview</h3>
+            <a href="/projects" class="btn btn-sm btn-secondary">View All</a>
+        </div>
+        <div class="card-body">
+            <div id="projects-overview">
+                <div class="text-center text-muted">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Tags -->
+<div class="card mt-6">
+    <div class="card-header">
+        <h3 class="card-title">Most Used Tags</h3>
+        <a href="/tags" class="btn btn-sm btn-secondary">Manage Tags</a>
+    </div>
+    <div class="card-body">
+        <div class="chart-container">
+            <canvas id="tags-chart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let statusChart, priorityChart, tagsChart;
+
+async function loadDashboardData() {
+    console.log('Loading dashboard data...');
+    try {
+        const [projects, issues, tagUsageStats] = await Promise.all([
+            api.getProjects(),
+            api.getIssues(),
+            api.getTagUsageStats()
+        ]);
+
+        const tagStats = tagUsageStats.map(stat => ({
+            tag_id: stat.tag_id,
+            tag_name: stat.name,
+            usage_count: stat.issue_count
+        }));
+
+        console.log('Data loaded:', { projects: projects.length, issues: issues.length, tagStats: tagStats.length });
+        updateStatistics(projects, issues);
+        updateRecentIssues(issues.slice(0, 5));
+        updateProjectsOverview(projects);
+        updateCharts(issues, tagStats);
+    } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+        if (typeof showToast === 'function') {
+            showToast('Failed to load dashboard data', 'error');
+        } else {
+            alert('Failed to load dashboard data: ' + error.message);
+        }
+    }
+}
+
+function updateStatistics(projects, issues) {
+    document.getElementById('total-projects').textContent = projects.length;
+    document.getElementById('total-issues').textContent = issues.length;
+    
+    const openIssues = issues.filter(issue => issue.status === 'open').length;
+    document.getElementById('open-issues').textContent = openIssues;
+    
+    const highPriorityIssues = issues.filter(issue => issue.priority === 'high').length;
+    document.getElementById('high-priority-issues').textContent = highPriorityIssues;
+}
+
+function updateRecentIssues(issues) {
+    const container = document.getElementById('recent-issues-list');
+    
+    if (issues.length === 0) {
+        container.innerHTML = '<div class="empty-state">No issues found</div>';
+        return;
+    }
+
+    container.innerHTML = issues.map(issue => `
+        <div class="flex justify-between items-center mb-3 pb-3 border-bottom">
+            <div class="flex-1">
+                <div class="font-medium mb-1">${escapeHtml(issue.title)}</div>
+                <div class="text-sm text-muted">
+                    <span class="badge ${getStatusBadgeClass(issue.status)}">${issue.status.replace('_', ' ')}</span>
+                    <span class="${getPriorityClass(issue.priority)}">
+                        <i class="${getPriorityIcon(issue.priority)}"></i>
+                        ${issue.priority}
+                    </span>
+                    ${issue.assignee ? '• ' + issue.assignee : ''}
+                </div>
+            </div>
+            <div class="text-xs text-muted">
+                ${formatRelativeDate(issue.created_at)}
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateProjectsOverview(projects) {
+    const container = document.getElementById('projects-overview');
+    
+    if (projects.length === 0) {
+        container.innerHTML = '<div class="empty-state">No projects found</div>';
+        return;
+    }
+
+    // Get issue counts for each project
+    Promise.all(projects.map(project => api.getProjectIssues(project.project_id)))
+        .then(projectIssues => {
+            container.innerHTML = projects.map((project, index) => {
+                const issues = projectIssues[index] || [];
+                const openIssues = issues.filter(issue => issue.status === 'open').length;
+                
+                return `
+                    <div class="flex justify-between items-center mb-3 pb-3 border-bottom cursor-pointer" 
+                         onclick="window.location.href='/projects?project=${project.project_id}'">
+                        <div>
+                            <div class="font-medium">${escapeHtml(project.name)}</div>
+                            <div class="text-sm text-muted">
+                                ${issues.length} total issues, ${openIssues} open
+                            </div>
+                        </div>
+                        <div class="text-xs text-muted">
+                            Created ${formatRelativeDate(project.created_at)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        })
+        .catch(error => {
+            console.error('Failed to load project issues:', error);
+            container.innerHTML = projects.map(project => `
+                <div class="flex justify-between items-center mb-3 pb-3 border-bottom cursor-pointer" 
+                     onclick="window.location.href='/projects?project=${project.project_id}'">
+                    <div>
+                        <div class="font-medium">${escapeHtml(project.name)}</div>
+                        <div class="text-sm text-muted">Created ${formatRelativeDate(project.created_at)}</div>
+                    </div>
+                </div>
+            `).join('');
+        });
+}
+
+function updateCharts(issues, tagStats) {
+    // Status Chart
+    const statusCounts = {
+        'open': issues.filter(i => i.status === 'open').length,
+        'in_progress': issues.filter(i => i.status === 'in_progress').length,
+        'closed': issues.filter(i => i.status === 'closed').length
+    };
+
+    if (statusChart) statusChart.destroy();
+    statusChart = createChart('status-chart', 'doughnut', {
+        labels: ['Open', 'In Progress', 'Closed'],
+        datasets: [{
+            data: [statusCounts.open, statusCounts.in_progress, statusCounts.closed],
+            backgroundColor: ['#f59e0b', '#3b82f6', '#10b981'],
+            borderWidth: 0
+        }]
+    }, {
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    });
+
+    // Priority Chart
+    const priorityCounts = {
+        'high': issues.filter(i => i.priority === 'high').length,
+        'medium': issues.filter(i => i.priority === 'medium').length,
+        'low': issues.filter(i => i.priority === 'low').length
+    };
+
+    if (priorityChart) priorityChart.destroy();
+    priorityChart = createChart('priority-chart', 'bar', {
+        labels: ['High', 'Medium', 'Low'],
+        datasets: [{
+            label: 'Issues',
+            data: [priorityCounts.high, priorityCounts.medium, priorityCounts.low],
+            backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
+            borderWidth: 0
+        }]
+    }, {
+        plugins: {
+            legend: {
+                display: false
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        }
+    });
+
+    // Tags Chart
+    if (tagStats && tagStats.length > 0) {
+        const topTags = [...tagStats]
+            .filter(tag => tag.usage_count > 0)
+            .sort((a, b) => b.usage_count - a.usage_count || a.tag_name.localeCompare(b.tag_name))
+            .slice(0, 10);
+
+        if (topTags.length === 0) {
+            if (tagsChart) {
+                tagsChart.destroy();
+                tagsChart = null;
+            }
+        } else {
+            if (tagsChart) tagsChart.destroy();
+            tagsChart = createChart('tags-chart', 'bar', {
+                labels: topTags.map(tag => tag.tag_name),
+                datasets: [{
+                    label: 'Usage Count',
+                    data: topTags.map(tag => tag.usage_count),
+                    backgroundColor: '#3b82f6',
+                    borderWidth: 0
+                }]
+            }, {
+                indexAxis: 'y',
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            });
+        }
+    } else if (tagsChart) {
+        tagsChart.destroy();
+        tagsChart = null;
+    }
+}
+
+function refreshDashboard() {
+    loadDashboardData();
+}
+
+// Load dashboard data when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dashboard DOM loaded');
+    console.log('API object:', api);
+    console.log('Chart.js available:', typeof Chart !== 'undefined');
+    loadDashboardData();
+});
+</script>
+{% endblock %}

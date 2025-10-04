@@ -28,22 +28,11 @@ from pydantic import ValidationError
 # Initialize the router for issue related endpoints
 router = APIRouter(prefix="/issues", tags=["issues"])
 
-def handle_repo_exceptions(func):
-    """Decorator to handle repository exceptions with proper HTTP status codes."""
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except NotFound as e:
-            raise HTTPException(status_code=404, detail=str(e))
-        except AlreadyExists as e: 
-            raise HTTPException(status_code=409, detail=str(e))
-        except (ValidationError, ValueError) as e:
-            raise HTTPException(status_code=422, detail=str(e))
-    return wrapper
+from functools import wraps
+
 
 #CREATE ISSUE
 @router.post("/", response_model=schemas.IssueOut)
-@handle_repo_exceptions
 def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
     """
     Create a new issue.
@@ -58,89 +47,18 @@ def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the associated project is not found.
     """
-    return repo_issues.create_issue(db, data)
+    try:
+        return repo_issues.create_issue(db, data)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AlreadyExists as e: 
+        raise HTTPException(status_code=409, detail=str(e))
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
     
-# AUTO-ASSIGN TASK TO ASSIGNEE    
-@router.post("/{issue_id}/auto-assign", response_model=dict)
-@handle_repo_exceptions
-def auto_assign_issue(issue_id: int, db: Session = Depends(get_db)):
-    """
-    Automatically assign an issue to the best available assignee.
-
-    Args:
-        issue_id (int): ID of the issue to assign.
-        db (Session): Database session.
-
-    Returns:
-        dict: A message indicating the assigned assignee.
-
-    Raises:
-        HTTPException: If the issue is not found or auto-assignment fails.
-    """
-    suggester = AssigneeSuggester()
-    success = suggester.auto_assign(db, issue_id)
-    if success:
-        issue_after = repo_issues.get_issue(db, issue_id)
-        return {"assigned_to": issue_after.assignee}
-    else:
-        raise HTTPException(status_code=400, detail="Could not automatically assign")
-
-
-
-
-# SUGGEST TAGS
-@router.post("/suggest-tags", response_model=dict)
-def suggest_tags_api(
-    title: str = Query(..., description="Issue title"),
-    description: Optional[str] = Query(None, description="Issue description"),
-    log: Optional[str] = Query(None, description="Error log")
-):
-    """
-    Generate AI-based tag suggestions for an issue.
-
-    Args:
-        title (str): Title of the issue.
-        description (Optional[str]): Description of the issue.
-        log (Optional[str]): Error log associated with the issue.
-
-    Returns:
-        dict: Suggested tags for the issue.
-    """
-
-    tag_generator = TagGenerator()  
-    suggested_tags = tag_generator.generate_tags(
-        title=title,
-        description=description or "",
-        log=log or ""
-    )
-    
-    return {"suggested_tags": suggested_tags}
-
-
-# GET SPECIFIC ISSUE
-@router.get("/{issue_id}", response_model=schemas.IssueOut)
-@handle_repo_exceptions
-def get_issue(issue_id: int, db: Session = Depends(get_db)):
-    """
-    Retrieve a specific issue by its ID.
-
-    Args:
-        issue_id (int): ID of the issue to retrieve.
-        db (Session): Database session.
-
-    Returns:
-        schemas.IssueOut: The retrieved issue.
-
-    Raises:
-        HTTPException: If the issue is not found.
-    """
-    return repo_issues.get_issue(db, issue_id)
-
-
 
 #LIST ISSUES
 @router.get("/", response_model=list[schemas.IssueOut])
-@handle_repo_exceptions
 def list_issues(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0, description="Number of issues to skip"),
@@ -172,15 +90,133 @@ def list_issues(
     Returns:
         list[schemas.IssueOut]: List of issues matching the filters.
     """
-    tag_filter = None
-    if tags:
-        tag_filter = [tag.strip() for tag in tags.split(",") if tag.strip()]
-    return repo_issues.list_issues(db, skip=skip, limit=limit, assignee=assignee, priority=priority, status=status, title=title, project_id=project_id, tags=tag_filter,tags_match_all=tags_match_all)
+    try:
+        tag_filter = None
+        if tags:
+            tag_filter = [tag.strip() for tag in tags.split(",") if tag.strip()]
+        return repo_issues.list_issues(db, skip=skip, limit=limit, assignee=assignee, priority=priority, status=status, title=title, project_id=project_id, tags=tag_filter,tags_match_all=tags_match_all)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AlreadyExists as e: 
+        raise HTTPException(status_code=409, detail=str(e))
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    
+# AUTO-ASSIGN TASK TO ASSIGNEE    
+@router.post("/{issue_id}/auto-assign", response_model=dict)
+def auto_assign_issue(issue_id: int, db: Session = Depends(get_db)):
+    """
+    Automatically assign an issue to the best available assignee.
+
+    Args:
+        issue_id (int): ID of the issue to assign.
+        db (Session): Database session.
+
+    Returns:
+        dict: A message indicating the assigned assignee.
+
+    Raises:
+        HTTPException: If the issue is not found or auto-assignment fails.
+    """
+    try:
+        suggester = AssigneeSuggester()
+        success = suggester.auto_assign(db, issue_id)
+        if success:
+            issue_after = repo_issues.get_issue(db, issue_id)
+            return {"assigned_to": issue_after.assignee}
+        else:
+            raise HTTPException(status_code=400, detail="Could not automatically assign")
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AlreadyExists as e: 
+        raise HTTPException(status_code=409, detail=str(e))
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+
+# SUGGEST TAGS
+@router.post("/suggest-tags", response_model=dict)
+def suggest_tags_api(
+    title: str = Query(..., description="Issue title"),
+    description: Optional[str] = Query(None, description="Issue description"),
+    log: Optional[str] = Query(None, description="Error log")
+):
+    """
+    Generate AI-based tag suggestions for an issue.
+
+    Args:
+        title (str): Title of the issue.
+        description (Optional[str]): Description of the issue.
+        log (Optional[str]): Error log associated with the issue.
+
+    Returns:
+        dict: Suggested tags for the issue.
+    """
+
+    tag_generator = TagGenerator()  
+    suggested_tags = tag_generator.generate_tags(
+        title=title,
+        description=description or "",
+        log=log or ""
+    )
+    
+    return {"suggested_tags": suggested_tags}
+
+# SEARCH ISSUES
+@router.get("/search", response_model=List[IssueOut])
+def search_issues_api(query: str = Query(..., description="Search query for issue titles"), db: Session = Depends(get_db)):
+    """
+    Search for issues by title.
+
+    Args:
+        query (str): Search query string to match against issue titles.
+        db (Session): Database session.
+
+    Returns:
+        List[IssueOut]: List of issues with titles matching the search query.
+    """
+    try:
+        issues = repo_issues.search_issues(db, query)
+        return [IssueOut.model_validate(issue) for issue in issues]
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AlreadyExists as e: 
+        raise HTTPException(status_code=409, detail=str(e))
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+# GET SPECIFIC ISSUE
+@router.get("/{issue_id}", response_model=schemas.IssueOut)
+def get_issue(issue_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve a specific issue by its ID.
+
+    Args:
+        issue_id (int): ID of the issue to retrieve.
+        db (Session): Database session.
+
+    Returns:
+        schemas.IssueOut: The retrieved issue.
+
+    Raises:
+        HTTPException: If the issue is not found.
+    """
+    try:
+        return repo_issues.get_issue(db, issue_id)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AlreadyExists as e: 
+        raise HTTPException(status_code=409, detail=str(e))
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 
     
 #UPDATE ISSUE
 @router.put("/{issue_id}", response_model=schemas.IssueOut)
-@handle_repo_exceptions
 def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends(get_db)):
     """
     Update an existing issue.
@@ -196,12 +232,18 @@ def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends
     Raises:
         HTTPException: If the issue is not found.
     """
-    return repo_issues.update_issue(db, issue_id, data)
+    try:
+        return repo_issues.update_issue(db, issue_id, data)
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AlreadyExists as e: 
+        raise HTTPException(status_code=409, detail=str(e))
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
         
 #DELETE ISSUE
 @router.delete("/{issue_id}", response_model=dict)
-@handle_repo_exceptions
 def delete_issue(issue_id: int, db: Session = Depends(get_db)):
     """
     Delete an issue by its ID.
@@ -216,25 +258,16 @@ def delete_issue(issue_id: int, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the issue is not found.
     """
-    repo_issues.delete_issue(db, issue_id)
-    return {"message": f"Issue {issue_id} deleted successfully"}
+    try:
+        repo_issues.delete_issue(db, issue_id)
+        return {"message": f"Issue {issue_id} deleted successfully"}
+    except NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except AlreadyExists as e: 
+        raise HTTPException(status_code=409, detail=str(e))
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
-
-# SEARCH ISSUES
-@router.get("/search", response_model=List[IssueOut])
-@handle_repo_exceptions
-def search_issues_api(query: str = Query(..., description="Search query for issues"), db: Session = Depends(get_db)):
-    """
-    Search for issues by title, description, or tags.
-
-    Args:
-        query (str): Search query string.
-        db (Session): Database session.
-
-    Returns:
-        List[IssueOut]: List of issues matching the search query.
-    """
-    return repo_issues.search_issues(db, query)
 
 

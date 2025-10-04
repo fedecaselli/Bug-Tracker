@@ -39,8 +39,9 @@ class TagUpdate(BaseModel):
     name: Optional[constr(min_length=1, max_length=100)] = None
 '''
 
-class TagOut(TagBase):
+class TagOut(BaseModel):
     """Schema for tag API responses."""
+    name: str
     tag_id: int
     
     # Enables automatic conversion of SQLAlchemy ORM objects to Pydantic models
@@ -71,8 +72,9 @@ class ProjectUpdate(BaseModel):
             return name
         return validate_project_name(name)
     
-class ProjectOut(ProjectBase):
+class ProjectOut(BaseModel):
     """Schema for project API responses."""
+    name: str
     project_id: int
     created_at: datetime
     model_config = {"from_attributes": True}
@@ -161,11 +163,23 @@ class IssueUpdate(BaseModel):
         return validate_tag_names(tag_names)
 
     
-class IssueOut(IssueBase):
+class IssueOut(BaseModel):
     issue_id: int
     project_id: int
+    title: str
+    description: Optional[str] = None
+    log: Optional[str] = None
+    summary: Optional[str] = None
+    priority: str
+    status: str
+    assignee: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     tags: List[TagOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+    
+    
+    

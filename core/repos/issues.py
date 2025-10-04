@@ -264,3 +264,21 @@ def list_issues(
     return query.offset(skip).limit(limit).all()
 
 
+
+
+#SEARCH ISSUES
+# Add this function at the end of the file
+
+def search_issues(db: Session, query: str) -> list[models.Issue]:
+    """
+    Search for issues by title.
+
+    Args:
+        db (Session): Database session.
+        query (str): Search query string.
+
+    Returns:
+        list[Issue]: List of issues matching the search query.
+    """
+    # Search only in title field
+    return db.query(models.Issue).filter(models.Issue.title.ilike(f"%{query}%")).order_by(models.Issue.created_at.desc()).all()

@@ -48,7 +48,9 @@ class TagGenerator:
         
         for tag, keywords in self._keywords.items():
             for keyword in keywords:
-                if re.search(rf"\b{re.escape(keyword.lower())}\b", text):
+                # Use word boundaries to ensure exact word match
+                pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+                if re.search(pattern, text):
                 # If a keyword is found in the text, add the tag and stop checking further keywords
                     suggested_tags.append(tag)
                     break  

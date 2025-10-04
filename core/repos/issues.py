@@ -16,14 +16,13 @@ from .exceptions import NotFound
 from .tags import get_or_create_tags, update_tags, _normalize_name
 from core.automation.tag_generator import TagGenerator
 from core.automation.assignee_suggestion import AssigneeSuggester 
-from sqlalchemy.exc import IntegrityError
-from pydantic import ValidationError
-
+from core.validation import (validate_title, validate_priority, validate_status, validate_tag_names)
+from sqlalchemy import case
 
 #CREATE ISSUE
-def create_issue(db: Session, data: IssueCreate) -> Issue:
+def create_issue(db:Session, data: IssueCreate) -> Issue:
     """
-    Create a new issue in the database with comprehensive validation.
+    Create a new issue in the database.
 
     Args:
         db (Session): Database session.
@@ -34,94 +33,69 @@ def create_issue(db: Session, data: IssueCreate) -> Issue:
 
     Raises:
         NotFound: If the project associated with the issue does not exist.
-        ValidationError: If validation fails or database constraints are violated.
     """
-    try:
-        # Ensure project exists
-        project = db.query(Project).filter_by(project_id=data.project_id).first()
-        if not project:
-            raise NotFound(f"Project {data.project_id} not found")
         
-        # Create issue object
-        issue = Issue(
-            project_id=data.project_id,
-            title=data.title,
-            description=data.description,
-            log=data.log,
-            summary=data.summary,
-            priority=data.priority,
-            status=data.status,
-            assignee=data.assignee,
-        ) 
-        
-        # Handle tags
-        if data.tag_names:
-            all_tags = list(data.tag_names)
-        else:
-            all_tags = []
-        
-        # Auto-generate tags if requested
-        if data.auto_generate_tags:
-            tag_generator = TagGenerator()
-            generated_tags = tag_generator.generate_tags(
-                title=data.title, 
-                description=data.description or "", 
-                log=data.log or ""
-            )
-            for tag in generated_tags:
-                if tag not in all_tags:
-                    all_tags.append(tag)
-        
-        # Associate tags with issue
-        if all_tags:
-            tags = get_or_create_tags(db, all_tags)
-            issue.tags = tags
-                    
-        # Save issue to database
-        db.add(issue)
-        db.commit()
-        db.refresh(issue)
-        
-        # Auto-assign an assignee if requested and no assignee is provided
-        if data.auto_generate_assignee and not data.assignee:  
-            suggester = AssigneeSuggester()
-        
-            # Get the tag names that were just assigned to the issue
-            issue_tag_names = []
-            if issue.tags:
-                for tag in issue.tags:
-                    issue_tag_names.append(tag.name)
-            
-            # Suggest assignee based on predefined logic
-            suggested_assignee = suggester.suggest_assignee(
-                db, 
-                issue_tag_names, 
-                issue.status, 
-                issue.priority
-            )
-            
-            # Update the issue with the suggested assignee
-            if suggested_assignee:
-                issue.assignee = suggested_assignee
-                db.commit()
-                db.refresh(issue)
+    # Ensure project exists
+    project = db.query(Project).filter_by(project_id=data.project_id).first()
+    if not project:
+        raise NotFound(f"Project {data.project_id} not found")
+    
+    # Create issue object
+    issue = Issue(
+        project_id=data.project_id,
+        title=data.title,
+        description=data.description,
+        log=data.log,
+        summary=data.summary,
+        priority=data.priority,
+        status=data.status,
+        assignee=data.assignee,
+    ) 
+    
+    # Handle tags
+    if data.tag_names:
+        all_tags = list(data.tag_names)
+    else:
+        all_tags = []
+    
+    # Auto-generate tags if requestes
+    if data.auto_generate_tags:
+        tag_generator = TagGenerator()
+        generated_tags = tag_generator.generate_tags(title=data.title, description=data.description or "", log=data.log or "")
+        for tag in generated_tags:
+            if tag not in all_tags:
+                all_tags.append(tag)
+    
+    # Associate tags with issue
+    if all_tags:
+        tags = get_or_create_tags(db, all_tags)
+        issue.tags = tags
                 
-        return issue
+    # Save issue to database
+    db.add(issue)
+    db.commit()
+    db.refresh(issue)
+    
+    # Auto-assign an assignee if requested and no assignee is provided
+    if data.auto_generate_assignee and not data.assignee:  
+        suggester = AssigneeSuggester()
+    
+        # Get the tag names that were just assigned to the issue
+        issue_tag_names = []
+        if issue.tags:
+            for tag in issue.tags:
+                issue_tag_names.append(tag.name)
         
-    except ValueError as e:
-        # Handle model validation errors (from SQLAlchemy @validates)
-        db.rollback()
-        raise ValidationError(f"Validation error: {str(e)}")
-    except IntegrityError as e:
-        # Handle database constraint violations
-        db.rollback()
-        if "check_issue_priority" in str(e):
-            raise ValidationError("Invalid priority value. Must be one of: low, medium, high")
-        elif "check_issue_status" in str(e):
-            raise ValidationError("Invalid status value. Must be one of: open, in_progress, closed")
-        else:
-            raise ValidationError(f"Database constraint violation: {str(e)}")
-
+        # Suggest assignee based on predefined logic
+        suggested_assignee = suggester.suggest_assignee(db, issue_tag_names, issue.status, issue.priority)
+        
+        # Update the issue with the suggested assignee
+        if suggested_assignee:
+            issue.assignee = suggested_assignee
+            db.commit()
+            db.refresh(issue)
+            
+    return issue
     
                 
 #GET ISSUE
@@ -169,7 +143,7 @@ def delete_issue(db:Session, issue_id: int) -> bool:
 #UPDATE ISSUE
 def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Issue | None:
     """
-    Update an existing issue with comprehensive validation.
+    Update an existing issue.
 
     Args:
         db (Session): Database session.
@@ -181,38 +155,26 @@ def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Is
 
     Raises:
         NotFound: If the issue does not exist.
-        ValidationError: If validation fails or database constraints are violated.
     """
-    try:
-        issue = get_issue(db, issue_id)
-        data = issue_in.model_dump(exclude_unset=True)
-        
-        # Update tags if provided
-        if "tag_names" in data and data["tag_names"] is not None:
-            tag_names = data.pop("tag_names")
-            update_tags(db, issue, tag_names)
+    issue = get_issue(db, issue_id)
+    #Pydantic schema
+    data = issue_in.model_dump(exclude_unset=True)
+    
+    if not data:
+        raise ValueError("No fields provided to update")
+    
+    # Update tags if provided
+    if "tag_names" in data and data["tag_names"] is not None:
+        tag_names = data.pop("tag_names")
+        update_tags(db,issue,tag_names)
 
-        # Update other fields 
-        for field, value in data.items():
-            setattr(issue, field, value)
+    # Update other fields 
+    for field, value in data.items():
+        setattr(issue, field, value)
 
-        db.commit()
-        db.refresh(issue)
-        return issue
-        
-    except ValueError as e:
-        # Handle model validation errors (from SQLAlchemy @validates)
-        db.rollback()
-        raise ValidationError(f"Validation error: {str(e)}")
-    except IntegrityError as e:
-        # Handle database constraint violations
-        db.rollback()
-        if "check_issue_priority" in str(e):
-            raise ValidationError("Invalid priority value. Must be one of: low, medium, high")
-        elif "check_issue_status" in str(e):
-            raise ValidationError("Invalid status value. Must be one of: open, in_progress, closed")
-        else:
-            raise ValidationError(f"Database constraint violation: {str(e)}")
+    db.commit()
+    db.refresh(issue)
+    return issue
 
     
 #LIST ISSUE
@@ -249,11 +211,30 @@ def list_issues(
     Raises:
         NotFound: If the specified project does not exist.
     """
+    # Validate pagination parameters
+    if skip < 0:
+        raise ValueError("Skip must be non-negative")
+    if limit <= 0 or limit > 100:
+        raise ValueError("Limit must be between 1 and 100")
+    
     # Ensure project exists
     if project_id is not None:
         project = db.query(models.Project).filter(models.Project.project_id == project_id).first()
         if not project:
             raise NotFound(f"Project {project_id} not found")
+
+    # Validate and normalize filter values using direct validation functions
+    if priority is not None:
+        priority = validate_priority(priority)  
+    
+    if status is not None:
+        status = validate_status(status)  
+    
+    if title is not None:
+        title = validate_title(title)  
+    
+    if tags is not None:
+        tags = validate_tag_names(tags)  
         
     query = db.query(models.Issue)
     
@@ -271,38 +252,15 @@ def list_issues(
         
     # Filter by tags
     if tags:
-        normalized_tags = []
-        for tag in tags:
-            normalized_tag = _normalize_name(tag)
-            if normalized_tag:
-                normalized_tags.append(normalized_tag)
-    
-        if normalized_tags:
-            if tags_match_all:
+        if tags_match_all:
                 # Issue must have ALL specified tags
-                for tag_name in normalized_tags:
-                    query = query.join(models.Issue.tags).filter(models.Tag.name == tag_name)
-            else:
-                # Issue must have ANY of the specified tags
-                query = query.join(models.Issue.tags).filter(models.Tag.name.in_(normalized_tags)).distinct()
-    # Order by creation time
-    query = query.order_by(models.Issue.created_at.asc())
+            for tag_name in tags:
+                query = query.join(models.Issue.tags).filter(models.Tag.name == tag_name)
+        else:
+            # Issue must have ANY of the specified tags
+            query = query.join(models.Issue.tags).filter(models.Tag.name.in_(tags)).distinct()
+    # Order by creation time (consider updated time if present)
+    query = query.order_by(case((models.Issue.updated_at != None, models.Issue.updated_at), else_=models.Issue.created_at).desc())
     return query.offset(skip).limit(limit).all()
 
 
-# SEARCH ISSUE
-def search_issues(db: Session, query: str) -> list[models.Issue]:
-    """
-    Search for issues by title, description, or tags.
-
-    Args:
-        db (Session): Database session.
-        query (str): Search query.
-
-    Returns:
-        list[Issue]: List of issues matching the search query.
-    """
-    return db.query(models.Issue).filter(
-        models.Issue.title.ilike(f"%{query}%") |
-        models.Issue.description.ilike(f"%{query}%")
-    ).all()

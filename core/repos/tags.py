@@ -14,6 +14,7 @@ from core import models
 from .exceptions import NotFound
 from sqlalchemy import func
 from sqlalchemy import text
+from core.validation import validate_tag_name, validate_tag_names
 
 # NORMALIZE TAG NAME
 def _normalize_name(name: str) -> str:
@@ -32,8 +33,8 @@ def get_tag_by_name(db: Session, name: str) -> models.Tag | None:
     Returns:
         Tag | None: The retrieved tag, or None if it does not exist.
     """
-    normalized = _normalize_name(name)
-    return db.query(models.Tag).filter(models.Tag.name == normalized).first()
+    validated_name = validate_tag_name(name)
+    return db.query(models.Tag).filter(models.Tag.name == validated_name).first()
 
 
 def get_or_create_tags(db: Session, names: List[str]) -> List[Tag]:
@@ -50,20 +51,13 @@ def get_or_create_tags(db: Session, names: List[str]) -> List[Tag]:
     if not names:
         return []
     
-    # Normalize all input names and remove duplicates / empty names
-    normalized_names = []
-    seen = set()
-    for name in names:
-        normalized = _normalize_name(name)
-        if normalized and normalized not in seen:
-            normalized_names.append(normalized)
-            seen.add(normalized)
+    validated_names = validate_tag_names(names)
     
-    if not normalized_names:
+    if not validated_names:
         return []
     
     # Query existing tags for all normalized names
-    existing_tags = db.query(Tag).filter(Tag.name.in_(normalized_names)).all()
+    existing_tags = db.query(Tag).filter(Tag.name.in_(validated_names)).all()
     existing_names = set()
     for tag in existing_tags:
         existing_names.add(tag.name)
@@ -71,7 +65,7 @@ def get_or_create_tags(db: Session, names: List[str]) -> List[Tag]:
     
     # Compute which names are missing
     missing_names = []
-    for name in normalized_names:
+    for name in validated_names:
         if name not in existing_names:
             missing_names.append(name)
     
@@ -87,7 +81,7 @@ def get_or_create_tags(db: Session, names: List[str]) -> List[Tag]:
     
     # Return all tags (existing and new)
     result = []
-    for name in normalized_names:
+    for name in validated_names:
         tag = None
 
         # Search in existing tags
@@ -121,6 +115,11 @@ def update_tags(db: Session, issue: Issue, names: List[str]) -> Issue:
     Returns:
         Issue: The updated issue with the new tags.
     """
+    try:
+        issue.tags  
+    except AttributeError:
+        raise ValueError("Invalid issue object")
+    
     tags = get_or_create_tags(db, names)
     issue.tags = tags
     return issue
@@ -158,10 +157,12 @@ def rename_tags_everywhere(db: Session, old_name: str, new_name: str) -> None:
         ValueError: If the tag names are empty after normalization.
         NotFound: If the tag to rename does not exist.
     """
-
-    old_normalized = _normalize_name(old_name)
-    new_normalized = _normalize_name(new_name)
+    validated_old_name = validate_tag_name(old_name)
+    validated_new_name = validate_tag_name(new_name)
     
+    old_normalized = validated_old_name
+    new_normalized = validated_new_name
+
     if not old_normalized or not new_normalized:
         raise ValueError("Tag names cannot be empty")
     
@@ -257,6 +258,10 @@ def list_tags(db: Session, skip: int = 0, limit: int = 100) -> list[models.Tag]:
     Returns:
         list[Tag]: List of tags.
     """
+    if skip < 0:
+        raise ValueError("Skip must be non-negative")
+    if limit <= 0 or limit > 100:
+        raise ValueError("Limit must be between 1 and 100")
     return db.query(models.Tag).offset(skip).limit(limit).all()
 
 #TAG USAGE STATS

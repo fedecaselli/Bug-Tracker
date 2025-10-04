@@ -17,12 +17,28 @@ from core.db import get_db
 from core.repos import projects as repo_projects
 from core.repos import issues as repo_issues
 from core.repos.exceptions import NotFound, AlreadyExists
+from pydantic import ValidationError
 
 # Initialize the router for project related endpoints
 router = APIRouter(prefix="/projects", tags=["projects"])
 
+
+def handle_repo_exceptions(func):
+    """Decorator to handle repository exceptions with proper HTTP status codes."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except NotFound as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except AlreadyExists as e: 
+            raise HTTPException(status_code=409, detail=str(e))
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return wrapper
+
 # CREATE PROJECT
 @router.post("/", response_model=schemas.ProjectOut)
+@handle_repo_exceptions
 def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
     """
     Create a new project.
@@ -37,14 +53,13 @@ def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If a project with the same name already exists.
     """
-    try:
-        return repo_projects.create_project(db, data)
-    except AlreadyExists as e:
-        raise HTTPException(status_code=409,detail=str(e))
+    return repo_projects.create_project(db, data)
+
         
 
 # GET PROJECT
 @router.get("/by-name", response_model=schemas.ProjectOut)
+@handle_repo_exceptions
 def get_project_by_name(name: str, db: Session = Depends(get_db)):
     """
     Retrieve a specific project by its name.
@@ -59,13 +74,12 @@ def get_project_by_name(name: str, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the project is not found.
     """
-    try:
-        return repo_projects.get_project_by_name(db, name)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    return repo_projects.get_project_by_name(db, name)
+
 
 # LIST ALL PROJECTS
 @router.get("/", response_model=list[schemas.ProjectOut])
+@handle_repo_exceptions
 def list_projects(db: Session = Depends(get_db)):
     """
     List all projects.
@@ -80,6 +94,7 @@ def list_projects(db: Session = Depends(get_db)):
 
 # UPDATE PROJECT
 @router.put("/{project_id}", response_model=schemas.ProjectOut)
+@handle_repo_exceptions
 def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = Depends(get_db)):
     """
     Update an existing project.
@@ -95,16 +110,13 @@ def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = D
     Raises:
         HTTPException: If the project is not found or if the updated name already exists.
     """
-    try:
-        return repo_projects.update_project(db, project_id, data)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except AlreadyExists as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    return repo_projects.update_project(db, project_id, data)
+
 
 
 # DELETE PROJECT
 @router.delete("/{project_id}", response_model=bool)
+@handle_repo_exceptions
 def delete_project(project_id: int, db: Session = Depends(get_db)):
     """
     Delete a project by its ID.
@@ -119,14 +131,13 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the project is not found.
     """
-    try:
-        return repo_projects.delete_project(db, project_id)
-    except NotFound as e: 
-        raise HTTPException(status_code=404, detail=str(e))
+    return repo_projects.delete_project(db, project_id)
+
 
 
 # LIST ISSUES FOR PROJECT 
 @router.get("/{project_id}/issues", response_model=list[schemas.IssueOut])
+@handle_repo_exceptions
 def list_issues_for_project(project_id: int, db: Session = Depends(get_db)):
     """
     List all issues associated with a specific project.
@@ -141,7 +152,4 @@ def list_issues_for_project(project_id: int, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the project is not found.
     """
-    try:
-        return repo_issues.list_issues(db, project_id=project_id)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    return repo_issues.list_issues(db, project_id=project_id)

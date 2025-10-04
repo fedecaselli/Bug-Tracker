@@ -12,7 +12,7 @@ from core.models import Project
 from core.schemas import ProjectCreate, ProjectUpdate
 from core import models
 from .exceptions import AlreadyExists, NotFound
-
+from core.validation import validate_project_name
 
 #CREATE PROJECT
 def create_project(db: Session, data: ProjectCreate) -> Project:
@@ -29,8 +29,11 @@ def create_project(db: Session, data: ProjectCreate) -> Project:
     Raises:
         AlreadyExists: If a project with the same name already exists.
     """
-    if db.query(Project).filter_by(name=data.name).first():
-        raise AlreadyExists(f"Project {data.name} already exists")
+    
+    existing = db.query(Project).filter_by(name=data.name).first()
+    if existing:
+        raise AlreadyExists(f"Project '{data.name}' already exists")
+    
     project = Project(name=data.name)
     db.add(project)
     db.commit()
@@ -96,7 +99,8 @@ def get_project_by_name(db: Session, name: str) -> models.Project:
     Raises:
         NotFound: If the project does not exist.
     """
-    project = db.query(models.Project).filter(models.Project.name == name).first()
+    validated_name = validate_project_name(name)
+    project = db.query(models.Project).filter(models.Project.name == validated_name).first()
     if not project:
         raise NotFound(f"Project with name '{name}' not found")
     return project
@@ -122,11 +126,14 @@ def update_project(db: Session, project_id: int, project_in: ProjectUpdate) -> m
         AlreadyExists: If another project with the same name already exists.
     """
     project = get_project(db, project_id)
+    
     if project_in.name is not None:
+        
         exists = db.query(Project).filter(Project.name == project_in.name, Project.project_id != project_id).first()
         if exists:
             raise AlreadyExists(f"Another project already uses the name '{project_in.name}'")
         project.name = project_in.name
+    
     db.commit()
     db.refresh(project)
     return project
@@ -144,4 +151,10 @@ def list_projects(db: Session, skip: int = 0, limit: int = 100) -> list[models.P
     Returns:
         list[Project]: List of projects.
     """
-    return db.query(models.Project).offset(skip).limit(limit).all()
+    # Validate pagination parameters
+    if skip < 0:
+        raise ValueError("Skip must be non-negative")
+    if limit <= 0 or limit > 100:
+        raise ValueError("Limit must be between 1 and 100")
+    
+    return db.query(models.Project).order_by(models.Project.created_at.desc()).offset(skip).limit(limit).all()

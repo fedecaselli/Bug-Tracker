@@ -14,12 +14,20 @@ Schema Pattern:
 from typing import Optional, List
 from pydantic import BaseModel, Field, constr, field_validator
 from datetime import datetime    
+from core.validation import (validate_priority, validate_status, validate_title, validate_project_name, validate_tag_name, validate_tag_names)
+from pydantic import ValidationError
+
 
 # TAG SCHEMAS
 
 class TagBase(BaseModel):
     """Base tag schema with common fields."""
     name: constr(min_length=1, max_length=100)
+    
+    @field_validator('name', mode='before')
+    @classmethod
+    def validate_name_field(cls, name):
+        return validate_tag_name(name)
 
 '''
 class TagCreate(TagBase):
@@ -44,6 +52,10 @@ class TagOut(TagBase):
 class ProjectBase(BaseModel):
     """Base project schema with common fields."""
     name: constr(min_length=1, max_length=200)
+    @field_validator('name', mode='before')
+    @classmethod
+    def validate_name_field(cls, name):
+        return validate_project_name(name)
 
 class ProjectCreate(ProjectBase):
     """Schema for creating new projects."""
@@ -52,6 +64,12 @@ class ProjectCreate(ProjectBase):
 class ProjectUpdate(BaseModel):
     """Schema for project updates."""
     name: Optional[constr(min_length=1, max_length=200)] = None
+    @field_validator('name', mode='before')
+    @classmethod
+    def validate_name_field(cls, name):
+        if name is None:
+            return name
+        return validate_project_name(name)
     
 class ProjectOut(ProjectBase):
     """Schema for project API responses."""
@@ -72,36 +90,36 @@ class IssueBase(BaseModel):
     status: str = "open"
     assignee: Optional[str] = None
 
+    @field_validator('title', mode='before')
+    @classmethod
+    def validate_title_field(cls, title):
+        return validate_title(title)
+
     @field_validator('priority', mode='before')
     @classmethod
-    def normalize_priority(cls, v):
-        """Normalize priority to lowercase."""
-        if v is None:
-            raise ValueError("Priority is required")
-        normalized = str(v).lower().strip()
-        # Validate against allowed values
-        if normalized not in ("low", "medium", "high"):
-            raise ValueError("Priority must be one of: low, medium, high")
-        return normalized
+    def validate_priority_field(cls, priority):
+        if priority is None:
+            raise ValidationError("Priority is required")
+        return validate_priority(priority)
     
     @field_validator('status', mode='before')
     @classmethod
-    def normalize_status(cls, v):
-        """Normalize status to lowercase."""
-        if v is None:
-            return "open"  # Default value
-        normalized = str(v).lower().strip()
-        # Validate against allowed values
-        if normalized not in ("open", "in_progress", "closed"):
-            raise ValueError("Status must be one of: open, in_progress, closed")
-        return normalized
-
+    def validate_status_field(cls, status):
+        if status is None:
+            return "open"  
+        return validate_status(status)
+    
 class IssueCreate(IssueBase):
     """Schema for creating new issues with automation options."""
     project_id: int
     tag_names: Optional[List[str]] = Field(default_factory=list)  # Manual tag assignment
     auto_generate_tags: bool = Field(default=False) # Enable automatic tag generation
     auto_generate_assignee: bool = Field(default=False) # Enable automatic assignee assignment
+
+    @field_validator('tag_names', mode='before')
+    @classmethod
+    def validate_tag_names_field(cls, tag_names):
+        return validate_tag_names(tag_names or [])
     
 class IssueUpdate(BaseModel):
     """Schema for partial issue updates - all fields optional."""
@@ -114,29 +132,34 @@ class IssueUpdate(BaseModel):
     assignee: Optional[str] = None
     tag_names: Optional[List[str]] = None 
 
+    @field_validator('title', mode='before')
+    @classmethod
+    def validate_title_field(cls, title):
+        if title is None:
+            return title
+        return validate_title(title)
+
     @field_validator('priority', mode='before')
     @classmethod
-    def normalize_priority(cls, v):
-        """Normalize priority to lowercase."""
-        if v is None:
-            raise ValueError("Priority is required")
-        normalized = str(v).lower().strip()
-        # Validate against allowed values
-        if normalized not in ("low", "medium", "high"):
-            raise ValueError("Priority must be one of: low, medium, high")
-        return normalized
+    def validate_priority_field(cls, priority):
+        if priority is None:
+            return priority
+        return validate_priority(priority)
     
     @field_validator('status', mode='before')
     @classmethod
-    def normalize_status(cls, v):
-        """Normalize status to lowercase."""
-        if v is None:
-            return "open"  # Default value
-        normalized = str(v).lower().strip()
-        # Validate against allowed values
-        if normalized not in ("open", "in_progress", "closed"):
-            raise ValueError("Status must be one of: open, in_progress, closed")
-        return normalized
+    def validate_status_field(cls, status):
+        if status is None:
+            return status
+        return validate_status(status)
+
+    @field_validator('tag_names', mode='before')
+    @classmethod
+    def validate_tag_names_field(cls, tag_names):
+        if tag_names is None:
+            return tag_names
+        return validate_tag_names(tag_names)
+
     
 class IssueOut(IssueBase):
     issue_id: int

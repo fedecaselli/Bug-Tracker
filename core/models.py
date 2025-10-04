@@ -9,7 +9,7 @@ This module defines the SQLAlchemy ORM models for:
 """
 
 from sqlalchemy import Column, Integer, String, CheckConstraint, Text, DateTime, func, ForeignKey, Table, Index
-from sqlalchemy.orm import validates, relationship
+from sqlalchemy.orm import relationship
 from .db import Base 
 
 # ASSOCIATION TABLES
@@ -70,23 +70,6 @@ class Issue(Base):
     project = relationship("Project", back_populates="issues")
     tags = relationship("Tag", secondary=issue_tags, back_populates="issues")
     
-    
-    # Application level validation
-    @validates("priority") 
-    def validate_priority(self, key, value):
-        """Normalize priority to lowercase and validate allowed values."""
-        value = value.lower()
-        if value not in ("low", "medium", "high"):
-            raise ValueError("Please choose either low, medium or high")
-        return value
-    
-    @validates("status") 
-    def validate_status(self, key, value):
-        """Normalize priority to lowercase and validate allowed values."""
-        value = value.lower()
-        if value not in ("open", "in_progress", "closed"):
-            raise ValueError("Please choose either open, in_progress or closed")
-        return value
     
     
 class Project(Base): 

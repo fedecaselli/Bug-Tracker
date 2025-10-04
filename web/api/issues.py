@@ -18,19 +18,32 @@ from fastapi import Query
 from core import schemas
 from core.db import get_db
 from core.repos import issues as repo_issues
-from core.repos.exceptions import NotFound
+from core.repos.exceptions import NotFound, AlreadyExists
 from core.automation.tag_generator import TagGenerator  
 from core.automation.assignee_suggestion import AssigneeSuggester  
 from core.schemas import IssueOut
+from pydantic import ValidationError 
 
-
-#CHECK WHEN TO USE NOT FOUND WHEN ALREADYEXISTS WHEN ALL
 
 # Initialize the router for issue related endpoints
 router = APIRouter(prefix="/issues", tags=["issues"])
 
+def handle_repo_exceptions(func):
+    """Decorator to handle repository exceptions with proper HTTP status codes."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except NotFound as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except AlreadyExists as e: 
+            raise HTTPException(status_code=409, detail=str(e))
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return wrapper
+
 #CREATE ISSUE
 @router.post("/", response_model=schemas.IssueOut)
+@handle_repo_exceptions
 def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
     """
     Create a new issue.
@@ -45,14 +58,12 @@ def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the associated project is not found.
     """
-    try:
-        return repo_issues.create_issue(db, data)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    return repo_issues.create_issue(db, data)
     
-# AUTO-ASSIGN TASK TO ASSIGNEE
+# AUTO-ASSIGN TASK TO ASSIGNEE    
 @router.post("/{issue_id}/auto-assign", response_model=dict)
-def auto_assign_issue(issue_id: int,db: Session = Depends(get_db)):
+@handle_repo_exceptions
+def auto_assign_issue(issue_id: int, db: Session = Depends(get_db)):
     """
     Automatically assign an issue to the best available assignee.
 
@@ -66,17 +77,15 @@ def auto_assign_issue(issue_id: int,db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the issue is not found or auto-assignment fails.
     """
-    try:
-        suggester = AssigneeSuggester()
-        success = suggester.auto_assign(db, issue_id)
-        if success:
-            issue_after = repo_issues.get_issue(db, issue_id)
-            return {"assigned_to": issue_after.assignee}
-        else:
-            raise HTTPException(status_code=400, detail="Could not automatically assign")
+    suggester = AssigneeSuggester()
+    success = suggester.auto_assign(db, issue_id)
+    if success:
+        issue_after = repo_issues.get_issue(db, issue_id)
+        return {"assigned_to": issue_after.assignee}
+    else:
+        raise HTTPException(status_code=400, detail="Could not automatically assign")
 
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+
 
 
 # SUGGEST TAGS
@@ -110,6 +119,7 @@ def suggest_tags_api(
 
 # GET SPECIFIC ISSUE
 @router.get("/{issue_id}", response_model=schemas.IssueOut)
+@handle_repo_exceptions
 def get_issue(issue_id: int, db: Session = Depends(get_db)):
     """
     Retrieve a specific issue by its ID.
@@ -124,15 +134,13 @@ def get_issue(issue_id: int, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the issue is not found.
     """
-    try:
-        return repo_issues.get_issue(db, issue_id)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-        
+    return repo_issues.get_issue(db, issue_id)
+
 
 
 #LIST ISSUES
 @router.get("/", response_model=list[schemas.IssueOut])
+@handle_repo_exceptions
 def list_issues(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0, description="Number of issues to skip"),
@@ -164,16 +172,15 @@ def list_issues(
     Returns:
         list[schemas.IssueOut]: List of issues matching the filters.
     """
-    try: 
-        tag_filter = None
-        if tags:
-            tag_filter = [tag.strip() for tag in tags.split(",") if tag.strip()]
-        return repo_issues.list_issues(db, skip=skip, limit=limit, assignee=assignee, priority=priority, status=status, title=title, project_id=project_id, tags=tag_filter,tags_match_all=tags_match_all)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    tag_filter = None
+    if tags:
+        tag_filter = [tag.strip() for tag in tags.split(",") if tag.strip()]
+    return repo_issues.list_issues(db, skip=skip, limit=limit, assignee=assignee, priority=priority, status=status, title=title, project_id=project_id, tags=tag_filter,tags_match_all=tags_match_all)
+
     
 #UPDATE ISSUE
 @router.put("/{issue_id}", response_model=schemas.IssueOut)
+@handle_repo_exceptions
 def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends(get_db)):
     """
     Update an existing issue.
@@ -189,13 +196,12 @@ def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends
     Raises:
         HTTPException: If the issue is not found.
     """
-    try:
-        return repo_issues.update_issue(db, issue_id, data)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    return repo_issues.update_issue(db, issue_id, data)
+
         
 #DELETE ISSUE
 @router.delete("/{issue_id}", response_model=dict)
+@handle_repo_exceptions
 def delete_issue(issue_id: int, db: Session = Depends(get_db)):
     """
     Delete an issue by its ID.
@@ -210,15 +216,14 @@ def delete_issue(issue_id: int, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If the issue is not found.
     """
-    try:
-        repo_issues.delete_issue(db, issue_id)
-        return {"message": f"Issue {issue_id} deleted successfully"}
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    repo_issues.delete_issue(db, issue_id)
+    return {"message": f"Issue {issue_id} deleted successfully"}
+
 
 
 # SEARCH ISSUES
 @router.get("/search", response_model=List[IssueOut])
+@handle_repo_exceptions
 def search_issues_api(query: str = Query(..., description="Search query for issues"), db: Session = Depends(get_db)):
     """
     Search for issues by title, description, or tags.
@@ -230,7 +235,6 @@ def search_issues_api(query: str = Query(..., description="Search query for issu
     Returns:
         List[IssueOut]: List of issues matching the search query.
     """
-    try:
-        return repo_issues.search_issues(db, query)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return repo_issues.search_issues(db, query)
+
+

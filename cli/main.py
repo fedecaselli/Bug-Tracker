@@ -39,6 +39,24 @@ from core.repos.tags import (
     get_tag_usage_stats as repo_get_tag_usage_stats,
 )
 
+def handle_cli_exceptions(func):
+    """Decorator to handle CLI exceptions consistently."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except NotFound as e:
+            typer.echo(f"Error: {e}")
+            raise typer.Exit(code=1)
+        except AlreadyExists as e:
+            typer.echo(f"Error: {e}")
+            raise typer.Exit(code=1)
+        except ValidationError as e:
+            typer.echo(f"Validation Error: {e}")
+            raise typer.Exit(code=1)
+        except ValueError as e:
+            typer.echo(f"Error: {e}")
+            raise typer.Exit(code=1)
+    return wrapper
 
 @contextmanager
 def session_scope():
@@ -69,6 +87,7 @@ cli_app.add_typer(tag_app,name="tags")
 
 # PROJECT  COMMANDS: Add, Remove, List, Update
 @project_app.command("add")
+@handle_cli_exceptions
 def create_project(name: str = typer.Option(..., "--name", help="Project name")):
     """
     Create a new project.
@@ -88,21 +107,14 @@ def create_project(name: str = typer.Option(..., "--name", help="Project name"))
         Project My New Project successfully created with id: 5
     """
     with session_scope() as db: 
-        try:
-            # Create the project using repository layer
-            project = repo_create_project(db, ProjectCreate(name=name))
-            typer.echo(f"Project {project.name} successfully created with id: {project.project_id}")
-        except AlreadyExists as e:
-            # Handle case where project name already exists (names must be unique)
-            typer.echo(str(e))
-            raise typer.Exit(code=1)
-        except ValidationError as e:
-            # Handle validation error from schemas
-            typer.echo(f"Validation error: {e}")
-            raise typer.Exit(code=1)
+        # Create the project using repository layer
+        project = repo_create_project(db, ProjectCreate(name=name))
+        typer.echo(f"Project {project.name} successfully created with id: {project.project_id}")
+
 
         
 @project_app.command("rm")
+@handle_cli_exceptions
 def delete_project(
     project_id: Optional[int] = typer.Option(None, "--id", help="Project ID"),
     name: Optional[str] = typer.Option(None, "--name", help="Project name")):
@@ -126,36 +138,34 @@ def delete_project(
     """
 
     with session_scope() as db: 
-        try:
-            if project_id is not None and name is not None: 
-                # Both provided - check they match
-                project_name = repo_get_project_by_name(db, name)
-                if project_name.project_id != project_id:
-                    typer.echo("Project name and ID do not match. Please provide either name or ID")
-                    raise typer.Exit(code=1)
-                # Match - delete by ID
-                repo_delete_project(db,project_id)
-                typer.echo(f"Project '{name}' of ID {project_id} successfully deleted")
-                
-            elif project_id is not None:
-                # Delete by ID only
-                repo_delete_project(db, project_id)
-                typer.echo(f"Project {project_id} successfully deleted")
-            elif name is not None:
-                # Delete by name only: get project by name and delete by ID
-                project = repo_get_project_by_name(db, name)  
-                repo_delete_project(db, project.project_id)
-                typer.echo(f"Project '{name}' successfully deleted")
-            else:
-                # Handle if user does not provide neither ID nor name
-                typer.echo("Provide either --id or --name to delete a project")
+        if project_id is not None and name is not None: 
+            # Both provided - check they match
+            project_name = repo_get_project_by_name(db, name)
+            if project_name.project_id != project_id:
+                typer.echo("Project name and ID do not match. Please provide either name or ID")
                 raise typer.Exit(code=1)
-        except NotFound as e:
-            typer.echo(str(e))
+            # Match - delete by ID
+            repo_delete_project(db,project_id)
+            typer.echo(f"Project '{name}' of ID {project_id} successfully deleted")
+                
+        elif project_id is not None:
+            # Delete by ID only
+            repo_delete_project(db, project_id)
+            typer.echo(f"Project {project_id} successfully deleted")
+        elif name is not None:
+            # Delete by name only: get project by name and delete by ID
+            project = repo_get_project_by_name(db, name)  
+            repo_delete_project(db, project.project_id)
+            typer.echo(f"Project '{name}' successfully deleted")
+        else:
+            # Handle if user does not provide neither ID nor name
+            typer.echo("Provide either --id or --name to delete a project")
             raise typer.Exit(code=1)
+
         
 
 @project_app.command("list")
+@handle_cli_exceptions
 def list_project(
     limit: int = typer.Option(20, "--limit", help="Max projects to show", min=1, max=100),
     skip: int = typer.Option(0, "--skip", help="Skip first N projects", min=0)
@@ -187,6 +197,7 @@ def list_project(
 
         
 @project_app.command("update")
+@handle_cli_exceptions
 def update_project(
     old_name: str = typer.Option(..., "--old-name", help="Current project name"),
     new_name: str = typer.Option(..., "--new-name", help="New project name")):
@@ -212,28 +223,17 @@ def update_project(
     with session_scope() as db: 
         # Get project by name
         project = repo_get_project_by_name(db, old_name)
-        try:
-            # Create update data and update
-            data = ProjectUpdate(name=new_name)
-            updated_project = repo_update_project(db, project.project_id, data)
-            typer.echo(f"Updated project '{old_name}' with ID {updated_project.project_id}, to new name '{updated_project.name}'")
-        except AlreadyExists as e:
-            # Handle if new name already exists
-            typer.echo(str(e))
-            raise typer.Exit(code=1)
-        except NotFound as e:
-            # Handle if project does not exist
-            typer.echo(str(e))
-            raise typer.Exit(code=1)
-        except ValidationError as e:
-            # Handle validation errors from schemas
-            typer.echo(f"Error: {e}")
-            raise typer.Exit(code=1)
+        # Create update data and update
+        data = ProjectUpdate(name=new_name)
+        updated_project = repo_update_project(db, project.project_id, data)
+        typer.echo(f"Updated project '{old_name}' with ID {updated_project.project_id}, to new name '{updated_project.name}'")
+
     
     
     
 # ISSUE COMMANDS: Add, Remove, List, Update
 @issue_app.command("add")
+@handle_cli_exceptions
 def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", help="Project id - Note: either id or name required"), 
                 project_name: Optional[str] = typer.Option(None, "--project-name", help="Project name - Note: either id or name required"),
                 title: str = typer.Option(..., "--title"),
@@ -299,72 +299,58 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
         
         # Handle mismatch if both are provided 
         if project_name and project_id:
-            try:
-                # Verify name and ID belong to same project
-                project_by_name = repo_get_project_by_name(db, project_name)
-                if project_by_name.project_id != project_id:
-                    typer.echo("Project name and ID do not match. Please provide either name or id.")
-                    raise typer.Exit(code=1)
-                final_project_id = project_id
-            except NotFound as e:
-                typer.echo(str(e))
+            # Verify name and ID belong to same project
+            project_by_name = repo_get_project_by_name(db, project_name)
+            if project_by_name.project_id != project_id:
+                typer.echo("Project name and ID do not match. Please provide either name or id.")
                 raise typer.Exit(code=1)
+            final_project_id = project_id
+      
             
         # Handle case if only project name is provided 
         elif project_name:
-            try:
-                # Get project ID from name
-                project_obj = repo_get_project_by_name(db, project_name)
-                final_project_id = project_obj.project_id
-            except NotFound as e:
-                typer.echo(str(e))
-                raise typer.Exit(code=1)
+            # Get project ID from name
+            project_obj = repo_get_project_by_name(db, project_name)
+            final_project_id = project_obj.project_id
+
             
         # Handle case if only project ID is provided
         elif project_id:
-            try:
-                # Verify project exists
-                repo_get_project(db,project_id)
-                final_project_id = project_id
-            except NotFound as e:
-                typer.echo(str(e))
-                raise typer.Exit(code=1)
+            # Verify project exists
+            repo_get_project(db,project_id)
+            final_project_id = project_id
+
         
         
-        try:  
-            # Create issue with provided data
-            issue = repo_create_issue(db, IssueCreate(      
-                                project_id=final_project_id,
-                                title=title,
-                                description=description,
-                                log=log,
-                                summary=summary,
-                                priority=priority,
-                                status=status,
-                                assignee=assignee,
-                                tag_names=tag_names,
-                                auto_generate_tags=auto_tags,
-                                auto_generate_assignee=auto_assignee
-                                ), )  
-            typer.echo(f"Issue {issue.issue_id} successfully created with title '{issue.title}' in project {final_project_id}")
+
+        # Create issue with provided data
+        issue = repo_create_issue(db, IssueCreate(      
+                            project_id=final_project_id,
+                            title=title,
+                            description=description,
+                            log=log,
+                            summary=summary,
+                            priority=priority,
+                            status=status,
+                            assignee=assignee,
+                            tag_names=tag_names,
+                            auto_generate_tags=auto_tags,
+                            auto_generate_assignee=auto_assignee
+                            ), )  
+        typer.echo(f"Issue {issue.issue_id} successfully created with title '{issue.title}' in project {final_project_id}")
             
-            # Provide information on automatic assignee assignment if selected
-            if auto_assignee and issue.assignee and not assignee:
-                typer.echo(f"Auto-assigned to: {issue.assignee}")
-            elif auto_assignee and not issue.assignee:
-                typer.echo("Auto-assignment requested but no suitable assignee found")
-        except NotFound as e:
-            typer.echo(str(e))
-            raise typer.Exit(code=1)
-        except ValidationError as e:
-            # Handle validation error from schemas
-            typer.echo(f"Validation Error: {e}")
-            raise typer.Exit(code=1)
+        # Provide information on automatic assignee assignment if selected
+        if auto_assignee and issue.assignee and not assignee:
+            typer.echo(f"Auto-assigned to: {issue.assignee}")
+        elif auto_assignee and not issue.assignee:
+            typer.echo("Auto-assignment requested but no suitable assignee found")
+  
 
         
 
     
 @issue_app.command("rm")
+@handle_cli_exceptions
 def delete_issue(issue_id: int):
     """
     Delete an issue by its unique ID.
@@ -384,15 +370,13 @@ def delete_issue(issue_id: int):
         Successfully deleted issue
     """
     with session_scope() as db: 
-        try:
-            repo_delete_issue(db,issue_id)
-            typer.echo("Successfully deleted issue")
-        except NotFound as e:
-            typer.echo(str(e))
-            raise typer.Exit(code=1)
+        repo_delete_issue(db,issue_id)
+        typer.echo("Successfully deleted issue")
+
 
 
 @issue_app.command("list")
+@handle_cli_exceptions
 def list_issue(
     limit: int = typer.Option(20, "--limit", help="Max issues to show"),
     skip: int = typer.Option(0, "--skip", help="Skip first N issues"),
@@ -433,7 +417,6 @@ def list_issue(
     """
     
     with session_scope() as db: 
-        tag_filter = None
         # Parse comma-separated tags into list 
         tag_names = []
         if tags:
@@ -448,36 +431,26 @@ def list_issue(
         
         # Handle mismatch if both are provided 
         if project_name and project_id:
-            try:
-                # Verify name and ID belong to same project
-                project_by_name = repo_get_project_by_name(db, project_name)
-                if project_by_name.project_id != project_id:
-                    typer.echo("Project name and ID do not match. Please provide either name or id.")
-                    raise typer.Exit(code=1)
-                final_project_id = project_id
-            except NotFound as e:
-                typer.echo(str(e))
+            # Verify name and ID belong to same project
+            project_by_name = repo_get_project_by_name(db, project_name)
+            if project_by_name.project_id != project_id:
+                typer.echo("Project name and ID do not match. Please provide either name or id.")
                 raise typer.Exit(code=1)
+            final_project_id = project_id
 
         # Handle case if only project name is provided 
         elif project_name:
-            try:
-                # Get project ID from name
-                project_obj = repo_get_project_by_name(db, project_name)
-                final_project_id = project_obj.project_id
-            except NotFound as e:
-                typer.echo(str(e))
-                raise typer.Exit(code=1)
+            # Get project ID from name
+            project_obj = repo_get_project_by_name(db, project_name)
+            final_project_id = project_obj.project_id
+
         
         # Handle case if only project ID is provided
         elif project_id:
-            try:
-                # Verify project exists
-                repo_get_project(db,project_id)
-                final_project_id = project_id
-            except NotFound as e:
-                typer.echo(str(e))
-                raise typer.Exit(code=1)
+            # Verify project exists
+            repo_get_project(db,project_id)
+            final_project_id = project_id
+
         
         
         # Fetch issues with applied filters
@@ -508,6 +481,7 @@ def list_issue(
 
 
 @issue_app.command("update")
+@handle_cli_exceptions
 def update_issue(
     issue_id: int = typer.Option(..., "--id", help="Issue ID"),
     title: Optional[str] = typer.Option(None, "--title"),
@@ -550,56 +524,50 @@ def update_issue(
         if log == "-":
             import sys
             log = sys.stdin.read()
-        try:
-            # Build update dictionary with only provided fields for full or partial updates
-            update_data = {}
-            if title is not None:
-                update_data["title"] = title
-            if description is not None:
-                update_data["description"] = description
-            if log is not None:
-                update_data["log"] = log
-            if summary is not None:
-                update_data["summary"] = summary
-            if priority is not None:
-                update_data["priority"] = priority
-            if status is not None:
-                update_data["status"] = status
-            if assignee is not None:
-                update_data["assignee"] = assignee
-            if tags is not None: 
-                tag_names = []
-                tag_list = tags.split(",")
-                for tag in tag_list:
-                    stripped_tag = tag.strip()
-                    if stripped_tag:
-                        tag_names.append(stripped_tag)
-                update_data["tag_names"] = tag_names
+
+        # Build update dictionary with only provided fields for full or partial updates
+        update_data = {}
+        if title is not None:
+            update_data["title"] = title
+        if description is not None:
+            update_data["description"] = description
+        if log is not None:
+            update_data["log"] = log
+        if summary is not None:
+            update_data["summary"] = summary
+        if priority is not None:
+            update_data["priority"] = priority
+        if status is not None:
+            update_data["status"] = status
+        if assignee is not None:
+            update_data["assignee"] = assignee
+        if tags is not None: 
+            tag_names = []
+            tag_list = tags.split(",")
+            for tag in tag_list:
+                stripped_tag = tag.strip()
+                if stripped_tag:
+                    tag_names.append(stripped_tag)
+            update_data["tag_names"] = tag_names
             
-            # Handle if no updates are provided
-            if not update_data:
-                typer.echo("No fields provided to update")
-                raise typer.Exit(code=1)
+        # Handle if no updates are provided
+        if not update_data:
+            typer.echo("No fields provided to update")
+            raise typer.Exit(code=1)
                 
-            # Update using repository layer  
-            data = IssueUpdate(**update_data)
-            issue = repo_update_issue(db, issue_id, data)
-            typer.echo(f"Issue {issue.issue_id} updated")
+        # Update using repository layer  
+        data = IssueUpdate(**update_data)
+        issue = repo_update_issue(db, issue_id, data)
+        typer.echo(f"Issue {issue.issue_id} updated")
             
-        except NotFound as e:
-            # Handle case where issue doesn't exist
-            typer.echo(str(e))
-            raise typer.Exit(code=1)
-        except ValidationError as e:
-            # Handle validation error from schemas
-            typer.echo(f"Error: {e}")
-            raise typer.Exit(code=1)
+
 
 
 
 
 # TAG COMMANDS: Rename globally, Delete globally, Delete orphan tags, List
 @tag_app.command("rename")
+@handle_cli_exceptions
 def rename_tag(
     old_name: str = typer.Option(..., "--old-name", help="Current tag name"),
     new_name: str = typer.Option(..., "--new-name", help="New tag name")):
@@ -621,14 +589,13 @@ def rename_tag(
         Tag 'frontend' renamed to 'ui' across all issues
     """
     with session_scope() as db:
-        try:
-            repo_rename_tags_everywhere(db, old_name, new_name)
-            typer.echo(f"Tag '{old_name}' renamed to '{new_name}' across all issues")
-        except NotFound as e:
-            typer.echo(f"Error: {e}")
-            raise typer.Exit(code=1)
+        repo_rename_tags_everywhere(db, old_name, new_name)
+        typer.echo(f"Tag '{old_name}' renamed to '{new_name}' across all issues")
+
+   
         
 @tag_app.command("delete")
+@handle_cli_exceptions
 def delete_tag(tag_id: int = typer.Option(..., "--id", help="Tag ID")):
     """
     Delete a tag and remove it from all associated issues.
@@ -647,14 +614,12 @@ def delete_tag(tag_id: int = typer.Option(..., "--id", help="Tag ID")):
         Tag 5 deleted from all issues
     """
     with session_scope() as db:
-        try:
-            if repo_delete_tag(db, tag_id):
-                typer.echo(f"Tag {tag_id} deleted from all issues")
-        except NotFound as e:
-            typer.echo(f"Error: {e}")
-            raise typer.Exit(code=1)
+        if repo_delete_tag(db, tag_id):
+            typer.echo(f"Tag {tag_id} deleted from all issues")
+
         
 @tag_app.command("cleanup")
+@handle_cli_exceptions
 def cleanup_tags():
     """
     Remove all unused tags that are not associated with any issues.
@@ -671,6 +636,7 @@ def cleanup_tags():
         typer.echo(f"Cleaned up {count} unused tags")
 
 @tag_app.command("list")
+@handle_cli_exceptions
 def list_tags(
     limit: int = typer.Option(100, "--limit", help="Max tags to show", min=1, max=1000),
     skip: int = typer.Option(0, "--skip", help="Skip first N tags", min=0),

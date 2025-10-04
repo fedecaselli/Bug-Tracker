@@ -12,12 +12,61 @@ from sqlalchemy.orm import Session
 from core.models import Issue, Project
 from core.schemas import IssueCreate, IssueUpdate
 from core import models
-from .exceptions import NotFound
+from .exceptions import NotFound, AlreadyExists
 from .tags import get_or_create_tags, update_tags
 from core.automation.tag_generator import TagGenerator
 from core.automation.assignee_suggestion import AssigneeSuggester 
 from core.validation import (validate_title, validate_priority, validate_status, validate_tag_names)
 from sqlalchemy import case
+
+
+#CHECK DUPLICATES
+def _check_duplicate_issue(db: Session, project_id: int, title: str, description: str = None, 
+                          log: str = None, summary: str = None, priority: str = None, 
+                          status: str = None, assignee: str = None, tag_names: List[str] = None,
+                          exclude_issue_id: int = None) -> bool:
+    """
+    Check if an issue with identical fields already exists.
+    
+    Args:
+        db (Session): Database session.
+        project_id (int): Project ID.
+        title (str): Issue title.
+        description (str, optional): Issue description.
+        log (str, optional): Issue log.
+        summary (str, optional): Issue summary.
+        priority (str, optional): Issue priority.
+        status (str, optional): Issue status.
+        assignee (str, optional): Issue assignee.
+        tag_names (List[str], optional): Issue tag names.
+        exclude_issue_id (int, optional): Issue ID to exclude from check (for updates).
+    
+    Returns:
+        bool: True if a duplicate issue exists, False otherwise.
+    """
+    # Query for issues with matching basic fields
+    query = db.query(Issue).filter(
+        Issue.project_id == project_id,
+        Issue.title == title,
+        Issue.description == description,
+        Issue.log == log,
+        Issue.summary == summary,
+        Issue.priority == priority,
+        Issue.status == status,
+        Issue.assignee == assignee
+    )
+    
+    # Exclude current issue if updating
+    if exclude_issue_id:
+        query = query.filter(Issue.issue_id != exclude_issue_id)
+    
+    # Check for issues with exactly the same tags
+    for issue in query.all():
+        issue_tag_names = {tag.name for tag in issue.tags}
+        if set(tag_names or []) == issue_tag_names:
+            return True
+    
+    return False
 
 #CREATE ISSUE
 def create_issue(db:Session, data: IssueCreate) -> Issue:
@@ -33,12 +82,28 @@ def create_issue(db:Session, data: IssueCreate) -> Issue:
 
     Raises:
         NotFound: If the project associated with the issue does not exist.
+        AlreadyExists: If an identical issue already exists.
     """
         
     # Ensure project exists
     project = db.query(Project).filter_by(project_id=data.project_id).first()
     if not project:
         raise NotFound(f"Project {data.project_id} not found")
+    
+    # Check for duplicate issue
+    if _check_duplicate_issue(
+        db=db,
+        project_id=data.project_id,
+        title=data.title,
+        description=data.description,
+        log=data.log,
+        summary=data.summary,
+        priority=data.priority,
+        status=data.status,
+        assignee=data.assignee,
+        tag_names=data.tag_names
+    ):
+        raise AlreadyExists(f"An identical issue already exists in this project")
     
     # Create issue object
     issue = Issue(
@@ -155,6 +220,7 @@ def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Is
 
     Raises:
         NotFound: If the issue does not exist.
+        AlreadyExists: If the update would create a duplicate issue.
     """
     issue = get_issue(db, issue_id)
     #Pydantic schema
@@ -162,6 +228,46 @@ def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Is
     
     if not data:
         raise ValueError("No fields provided to update")
+    
+    # Prepare the updated values for duplicate check
+    updated_title = data.get("title", issue.title)
+    updated_description = data.get("description", issue.description)
+    updated_log = data.get("log", issue.log)
+    updated_summary = data.get("summary", issue.summary)
+    updated_priority = data.get("priority", issue.priority)
+    updated_status = data.get("status", issue.status)
+    updated_assignee = data.get("assignee", issue.assignee)
+    updated_tag_names = data.get("tag_names", [tag.name for tag in issue.tags])
+
+    # Check for duplicate issue (excluding current issue)
+    if _check_duplicate_issue(
+        db=db,
+        project_id=issue.project_id,
+        title=updated_title,
+        description=updated_description,
+        log=updated_log,
+        summary=updated_summary,
+        priority=updated_priority,
+        status=updated_status,
+        assignee=updated_assignee,
+        tag_names=updated_tag_names,
+        exclude_issue_id=issue_id
+    ):
+        # Check if it's the same issue (all fields identical to current state)
+        current_tag_names = {tag.name for tag in issue.tags}
+        if (updated_title == issue.title and
+            updated_description == issue.description and
+            updated_log == issue.log and
+            updated_summary == issue.summary and
+            updated_priority == issue.priority and
+            updated_status == issue.status and
+            updated_assignee == issue.assignee and
+            set(updated_tag_names) == current_tag_names):
+            # Same issue, no change needed
+            return issue
+        else:
+            # Different issue with same fields
+            raise AlreadyExists(f"An identical issue already exists in this project")
     
     # Update tags if provided
     if "tag_names" in data and data["tag_names"] is not None:
@@ -176,7 +282,7 @@ def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Is
     db.refresh(issue)
     return issue
 
-    
+
 #LIST ISSUE
 def list_issues(
     db: Session,

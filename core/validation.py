@@ -52,3 +52,6 @@ def validate_tag_names(tag_names: list) -> list:
             if validated_tag and validated_tag not in validated_tags:
                 validated_tags.append(validated_tag)
     return validated_tags
+
+
+

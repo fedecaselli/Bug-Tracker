@@ -129,8 +129,7 @@ def update_project(db: Session, project_id: int, project_in: ProjectUpdate) -> m
     project = get_project(db, project_id)
     
     if project_in.name is not None:
-        
-        exists = db.query(Project).filter(Project.name == project_in.name, Project.project_id != project_id).first()
+        exists = db.query(Project).filter(func.lower(Project.name) == project_in.name.lower(), Project.project_id != project_id).first()
         if exists:
             raise AlreadyExists(f"Another project already uses the name '{project_in.name}'")
         project.name = project_in.name

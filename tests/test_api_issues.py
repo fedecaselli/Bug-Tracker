@@ -245,3 +245,194 @@ def test_search_issues_api(file_db, project):
     print(f"Response: {response.json()}")
     assert response.status_code == 200
     assert any(i["title"] == "SearchMe" for i in response.json())
+    
+
+def test_create_duplicate_issue(db, project):
+    """Test that creating a duplicate issue raises AlreadyExists"""
+    # Create first issue
+    issue1_data = {
+        "project_id": project.project_id,
+        "title": "Bug Report",
+        "description": "Critical error",
+        "priority": "high",
+        "status": "open",
+        "assignee": "john@example.com",
+        "tag_names": ["bug", "critical"]
+    }
+    
+    response1 = client.post("/issues/", json=issue1_data)
+    assert response1.status_code == 200
+    
+    # Try to create identical issue
+    response2 = client.post("/issues/", json=issue1_data)
+    assert response2.status_code == 409
+    assert "identical issue already exists" in response2.json()["detail"]
+
+def test_create_duplicate_issue_different_case(db, project):
+    """Test that issues with same content but different case are considered duplicates"""
+    # Create first issue
+    issue1_data = {
+        "project_id": project.project_id,
+        "title": "Bug Report",
+        "description": "Critical error",
+        "priority": "high",
+        "status": "open"
+    }
+    
+    response1 = client.post("/issues/", json=issue1_data)
+    assert response1.status_code == 200
+    
+    # Try to create issue with different case in description
+    issue2_data = issue1_data.copy()
+    issue2_data["description"] = "CRITICAL ERROR"  # Different case
+    
+    response2 = client.post("/issues/", json=issue2_data)
+    assert response2.status_code == 200  # Should succeed - different content
+    
+    # Try to create truly identical issue
+    response3 = client.post("/issues/", json=issue1_data)
+    assert response3.status_code == 409
+
+def test_update_issue_to_duplicate(db, project):
+    """Test that updating an issue to match another issue raises AlreadyExists"""
+    # Create two different issues
+    issue1_data = {
+        "project_id": project.project_id,
+        "title": "Bug Report 1",
+        "description": "First error",
+        "priority": "high",
+        "status": "open"
+    }
+    
+    issue2_data = {
+        "project_id": project.project_id,
+        "title": "Bug Report 2", 
+        "description": "Second error",
+        "priority": "medium",
+        "status": "open"
+    }
+    
+    # Create both issues
+    response1 = client.post("/issues/", json=issue1_data)
+    response2 = client.post("/issues/", json=issue2_data)
+    assert response1.status_code == 200
+    assert response2.status_code == 200
+    
+    issue1_id = response1.json()["issue_id"]
+    
+    # Try to update issue1 to match issue2
+    update_data = {
+        "title": "Bug Report 2",
+        "description": "Second error", 
+        "priority": "medium"
+    }
+    
+    response = client.put(f"/issues/{issue1_id}", json=update_data)
+    assert response.status_code == 409
+    assert "identical issue already exists" in response.json()["detail"]
+
+def test_update_issue_same_data(db, project):
+    """Test that updating an issue with the same data doesn't raise error"""
+    # Create issue
+    issue_data = {
+        "project_id": project.project_id,
+        "title": "Bug Report",
+        "description": "Critical error",
+        "priority": "high",
+        "status": "open"
+    }
+    
+    response = client.post("/issues/", json=issue_data)
+    assert response.status_code == 200
+    issue_id = response.json()["issue_id"]
+    
+    # Update with same data
+    response = client.put(f"/issues/{issue_id}", json=issue_data)
+    assert response.status_code == 200
+    assert response.json()["issue_id"] == issue_id
+
+def test_update_issue_partial_duplicate(db, project):
+    """Test that partial updates that create duplicates are caught"""
+    # Create first issue
+    issue1_data = {
+        "project_id": project.project_id,
+        "title": "Bug Report",
+        "description": "Critical error",
+        "priority": "high",
+        "status": "open",
+        "assignee": "john@example.com"
+    }
+    
+    response1 = client.post("/issues/", json=issue1_data)
+    assert response1.status_code == 200
+    
+    # Create second issue with different assignee
+    issue2_data = issue1_data.copy()
+    issue2_data["assignee"] = "jane@example.com"
+    
+    response2 = client.post("/issues/", json=issue2_data)
+    assert response2.status_code == 200
+    issue2_id = response2.json()["issue_id"]
+    
+    # Try to update issue2 to match issue1 (change assignee)
+    update_data = {"assignee": "john@example.com"}
+    
+    response = client.put(f"/issues/{issue2_id}", json=update_data)
+    assert response.status_code == 409
+    assert "identical issue already exists" in response.json()["detail"]
+
+def test_duplicate_issue_different_projects(db):
+    """Test that identical issues in different projects are allowed"""
+    # Create two projects
+    project1_data = {"name": "Project 1"}
+    project2_data = {"name": "Project 2"}
+    
+    response1 = client.post("/projects/", json=project1_data)
+    response2 = client.post("/projects/", json=project2_data)
+    assert response1.status_code == 200
+    assert response2.status_code == 200
+    
+    project1_id = response1.json()["project_id"]
+    project2_id = response2.json()["project_id"]
+    
+    # Create identical issues in different projects
+    issue_data = {
+        "title": "Bug Report",
+        "description": "Critical error",
+        "priority": "high",
+        "status": "open"
+    }
+    
+    issue1_data = {**issue_data, "project_id": project1_id}
+    issue2_data = {**issue_data, "project_id": project2_id}
+    
+    response1 = client.post("/issues/", json=issue1_data)
+    response2 = client.post("/issues/", json=issue2_data)
+    assert response1.status_code == 200
+    assert response2.status_code == 200
+
+def test_duplicate_issue_with_tags(db, project):
+    """Test that issues with identical tags are considered duplicates"""
+    # Create first issue with tags
+    issue1_data = {
+        "project_id": project.project_id,
+        "title": "Bug Report",
+        "description": "Critical error",
+        "priority": "high",
+        "status": "open",
+        "tag_names": ["bug", "critical", "urgent"]
+    }
+    
+    response1 = client.post("/issues/", json=issue1_data)
+    assert response1.status_code == 200
+    
+    # Try to create identical issue with same tags
+    response2 = client.post("/issues/", json=issue1_data)
+    assert response2.status_code == 409
+    
+    # Try to create issue with different tags (should succeed)
+    issue3_data = issue1_data.copy()
+    issue3_data["tag_names"] = ["bug", "critical"]  # Different tags
+    
+    response3 = client.post("/issues/", json=issue3_data)
+    assert response3.status_code == 200

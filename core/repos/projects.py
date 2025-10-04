@@ -13,6 +13,7 @@ from core.schemas import ProjectCreate, ProjectUpdate
 from core import models
 from .exceptions import AlreadyExists, NotFound
 from core.validation import validate_project_name
+from sqlalchemy import func
 
 #CREATE PROJECT
 def create_project(db: Session, data: ProjectCreate) -> Project:
@@ -30,7 +31,7 @@ def create_project(db: Session, data: ProjectCreate) -> Project:
         AlreadyExists: If a project with the same name already exists.
     """
     
-    existing = db.query(Project).filter_by(name=data.name).first()
+    existing = db.query(Project).filter(func.lower(Project.name) == data.name.lower()).first()
     if existing:
         raise AlreadyExists(f"Project '{data.name}' already exists")
     

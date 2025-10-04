@@ -52,3 +52,11 @@ def test_list_projects(db):
     create_project(db, ProjectCreate(name="B"))
     projects = list_projects(db)
     assert len(projects) >= 2
+    
+def test_create_project_case_insensitive_uniqueness(db):
+    from core.schemas import ProjectCreate
+    from core.repos.projects import create_project, AlreadyExists
+
+    create_project(db, ProjectCreate(name="CaseTest"))
+    with pytest.raises(AlreadyExists):
+        create_project(db, ProjectCreate(name="casetest"))

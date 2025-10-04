@@ -16,10 +16,6 @@ from sqlalchemy import func
 from sqlalchemy import text
 from core.validation import validate_tag_name, validate_tag_names
 
-# NORMALIZE TAG NAME
-def _normalize_name(name: str) -> str:
-    """Normalize tag name: trim, collapse spaces, lowercase."""
-    return ' '.join(name.strip().lower().split())
 
 # GET TAG BY NAME 
 def get_tag_by_name(db: Session, name: str) -> models.Tag | None:

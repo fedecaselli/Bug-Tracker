@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from core.models import Project, Issue, Tag
 from core.schemas import IssueCreate
 from core.repos.tags import (
-    _normalize_name,
     get_tag_by_name,
     get_or_create_tags,
     update_tags,
@@ -21,7 +20,7 @@ from core.repos.tags import (
 )
 from core.repos.issues import create_issue
 from core.repos.exceptions import NotFound
-
+from core.validation import normalize_name
 
 def setup_project(db: Session, name: str = "TestProject") -> Project:
     """Helper to create a test project."""
@@ -48,19 +47,19 @@ class TestNormalizeName:
     """Test tag name normalization."""
     
     def test_normalize_basic(self):
-        assert _normalize_name("Frontend") == "frontend"
-        assert _normalize_name("BACKEND") == "backend"
-        assert _normalize_name("api") == "api"
+        assert normalize_name("Frontend") == "frontend"
+        assert normalize_name("BACKEND") == "backend"
+        assert normalize_name("api") == "api"
 
     def test_normalize_whitespace(self):
-        assert _normalize_name("  frontend  ") == "frontend"
-        assert _normalize_name("bug   fix") == "bug fix"
-        assert _normalize_name("  multiple   spaces  ") == "multiple spaces"
+        assert normalize_name("  frontend  ") == "frontend"
+        assert normalize_name("bug   fix") == "bug fix"
+        assert normalize_name("  multiple   spaces  ") == "multiple spaces"
 
     def test_normalize_empty(self):
-        assert _normalize_name("") == ""
-        assert _normalize_name("   ") == ""
-        assert _normalize_name("\t\n ") == ""
+        assert normalize_name("") == ""
+        assert normalize_name("   ") == ""
+        assert normalize_name("\t\n ") == ""
 
 
 class TestGetTagByName:
@@ -143,9 +142,11 @@ class TestGetOrCreateTags:
         assert len(tags) == 3
 
     def test_empty_strings_filtered(self, db):
-        tags = get_or_create_tags(db, ["frontend", "", "  ", "backend"])
-        assert len(tags) == 2
-        assert {tag.name for tag in tags} == {"frontend", "backend"}
+        """
+        Test that get_or_create_tags raises ValueError for empty and whitespace-only tag names.
+        """
+        with pytest.raises(ValueError):
+            get_or_create_tags(db, ["frontend", "", "  ", "backend"])
 
     def test_order_preservation(self, db):
         tags = get_or_create_tags(db, ["zulu", "alpha", "beta"])

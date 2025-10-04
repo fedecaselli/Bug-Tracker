@@ -56,6 +56,11 @@ class Issue(Base):
     
     # Database level constraints for data integrity
     __table_args__ = (
+        CheckConstraint("length(title) > 0", name="check_issue_title_not_empty"),
+        CheckConstraint("length(title) <= 100", name="check_issue_title_length"),
+        CheckConstraint("assignee IS NULL OR length(assignee) > 0", name="check_assignee_not_empty"),
+        CheckConstraint("assignee IS NULL OR length(assignee) <= 100", name="check_assignee_length"),
+        
         # Data integrity Constraints
         CheckConstraint("priority IN ('low','medium','high')", name="check_issue_priority"),
         CheckConstraint("status IN ('open','in_progress','closed')", name="check_issue_status"),
@@ -82,12 +87,17 @@ class Project(Base):
     
     __tablename__ = 'projects' 
     project_id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(200), nullable=False, unique=True)
+    name = Column(String(200), nullable=False, unique=True, index=True)
     created_at = Column(DateTime, server_default=func.now())
     
     # One-to-many: one project has many issues
     # passive_deletes=True: let database handle CASCADE deletion for better performance
     issues = relationship("Issue", back_populates="project", passive_deletes=True) 
+    
+    __table_args__ = (
+        CheckConstraint("length(name) > 0", name="check_project_name_not_empty"),
+        CheckConstraint("length(name) <= 200", name="check_project_name_length"),
+    )
     
 
 class Tag(Base):
@@ -102,3 +112,8 @@ class Tag(Base):
     
     # Many-to-many: tags can be on multiple issues, issues can have multiple tags
     issues = relationship("Issue", secondary=issue_tags, back_populates="tags")
+
+    __table_args__ = (
+        CheckConstraint("length(name) > 0", name="check_tag_name_not_empty"),
+        CheckConstraint("length(name) <= 100", name="check_tag_name_length"),
+    )

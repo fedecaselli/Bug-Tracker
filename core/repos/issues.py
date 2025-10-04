@@ -13,7 +13,7 @@ from core.models import Issue, Project
 from core.schemas import IssueCreate, IssueUpdate
 from core import models
 from .exceptions import NotFound
-from .tags import get_or_create_tags, update_tags, _normalize_name
+from .tags import get_or_create_tags, update_tags
 from core.automation.tag_generator import TagGenerator
 from core.automation.assignee_suggestion import AssigneeSuggester 
 from core.validation import (validate_title, validate_priority, validate_status, validate_tag_names)

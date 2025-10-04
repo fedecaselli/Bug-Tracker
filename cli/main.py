@@ -38,9 +38,10 @@ from core.repos.tags import (
     rename_tags_everywhere as repo_rename_tags_everywhere,
     get_tag_usage_stats as repo_get_tag_usage_stats,
 )
+import functools
 
 def handle_cli_exceptions(func):
-    """Decorator to handle CLI exceptions consistently."""
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)

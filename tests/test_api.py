@@ -2,6 +2,7 @@
 Comprehensive API tests for the Bug Tracker application.
 Tests all API endpoints with various scenarios including edge cases.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

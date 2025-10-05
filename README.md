@@ -119,7 +119,7 @@ python -m cli tags cleanup
 
 ## Architecture
 
-### Project Structure
+### Main project Structure
 ```
 Bug-Tracker/
 ├── app.py                # FastAPI web application
@@ -142,6 +142,10 @@ Bug-Tracker/
 │       └── tags.py         # Tag repository - tag operations, usage stats, cleanup, renaming
 ├── web/                 # Web interface
 │   ├── api/            # REST API endpoints
+│   │   ├── projects.py
+│   │   ├── issues.py
+│   │   └── tags.py
+│   │  
 │   ├── templates/      # HTML templates
 │   └── static/         # CSS, JavaScript, assets
 └── tests/              # Test suite

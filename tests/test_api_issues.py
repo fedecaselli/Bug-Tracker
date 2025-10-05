@@ -206,7 +206,7 @@ def test_auto_assign_issue_success(file_db, project):
 
 def test_auto_assign_issue_not_found():
     response = client.post("/issues/999999/auto-assign")
-    assert response.status_code == 400
+    assert response.status_code == 404
 
 def test_suggest_tags_api():
     response = client.post("/issues/suggest-tags", params={"title": "UI error", "description": "frontend", "log": "timeout"})

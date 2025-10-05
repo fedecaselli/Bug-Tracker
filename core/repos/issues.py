@@ -221,6 +221,7 @@ def update_issue(db: Session, issue_id: int, issue_in: IssueUpdate) -> models.Is
     Raises:
         NotFound: If the issue does not exist.
         AlreadyExists: If the update would create a duplicate issue.
+        ValueError: If no fields are provided to update.
     """
     issue = get_issue(db, issue_id)
     #Pydantic schema
@@ -316,6 +317,7 @@ def list_issues(
 
     Raises:
         NotFound: If the specified project does not exist.
+        ValueError: If pagination parameters are invalid.
     """
     # Validate pagination parameters
     if skip < 0:

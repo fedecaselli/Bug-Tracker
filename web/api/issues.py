@@ -45,7 +45,9 @@ def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
         schemas.IssueOut: The created issue.
 
     Raises:
-        HTTPException: If the associated project is not found.
+        404: If the associated project is not found.
+        409: If the issue already exists.
+        422: If validation fails.
     """
     try:
         return repo_issues.create_issue(db, data)
@@ -88,7 +90,9 @@ def list_issues(
         tags_match_all (bool): Match all or any tags.
 
     Returns:
-        list[schemas.IssueOut]: List of issues matching the filters.
+        404: If the associated project is not found.
+        409: If the issue already exists.
+        422: If validation fails.
     """
     try:
         tag_filter = None
@@ -116,7 +120,10 @@ def auto_assign_issue(issue_id: int, db: Session = Depends(get_db)):
         dict: A message indicating the assigned assignee.
 
     Raises:
-        HTTPException: If the issue is not found or auto-assignment fails.
+        404: If the issue is not found.
+        400: If auto-assignment fails.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         suggester = AssigneeSuggester()
@@ -151,17 +158,20 @@ def suggest_tags_api(
         log (Optional[str]): Error log associated with the issue.
 
     Returns:
-        dict: Suggested tags for the issue.
+        422: If validation fails.
     """
-
-    tag_generator = TagGenerator()  
-    suggested_tags = tag_generator.generate_tags(
-        title=title,
-        description=description or "",
-        log=log or ""
-    )
+    try: 
+        tag_generator = TagGenerator()  
+        suggested_tags = tag_generator.generate_tags(
+            title=title,
+            description=description or "",
+            log=log or ""
+        )
+        
+        return {"suggested_tags": suggested_tags}
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
     
-    return {"suggested_tags": suggested_tags}
 
 # SEARCH ISSUES
 @router.get("/search", response_model=List[IssueOut])
@@ -174,7 +184,9 @@ def search_issues_api(query: str = Query(..., description="Search query for issu
         db (Session): Database session.
 
     Returns:
-        List[IssueOut]: List of issues with titles matching the search query.
+        404: If no issues are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         issues = repo_issues.search_issues(db, query)
@@ -201,7 +213,9 @@ def get_issue(issue_id: int, db: Session = Depends(get_db)):
         schemas.IssueOut: The retrieved issue.
 
     Raises:
-        HTTPException: If the issue is not found.
+        404: If the issue is not found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_issues.get_issue(db, issue_id)
@@ -230,7 +244,9 @@ def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends
         schemas.IssueOut: The updated issue.
 
     Raises:
-        HTTPException: If the issue is not found.
+        404: If the issue is not found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_issues.update_issue(db, issue_id, data)
@@ -256,7 +272,9 @@ def delete_issue(issue_id: int, db: Session = Depends(get_db)):
         dict: A message confirming the deletion.
 
     Raises:
-        HTTPException: If the issue is not found.
+        404: If the issue is not found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         repo_issues.delete_issue(db, issue_id)

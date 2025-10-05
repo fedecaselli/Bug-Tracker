@@ -4,6 +4,14 @@ CLI
 This module provides a command-line interface (CLI) for managing projects, issues, and tags in the Bug Tracker application. 
 It allows users to perform operations such as creating, updating, deleting, and listing projects, issues, and tags. 
 The CLI also supports advanced features like automatic tag generation and assignee suggestion.
+
+Usage:
+    python -m cli [projects|issues|tags] <command> [options]
+
+Subcommands:
+    projects: add, rm, list, update
+    issues:   add, rm, list, update
+    tags:     rename, delete, cleanup, list
 """
 
 from core.db import SessionLocal
@@ -41,6 +49,18 @@ from core.repos.tags import (
 import functools
 
 def handle_cli_exceptions(func):
+    """
+    Decorator for CLI commands to handle common exceptions.
+
+    Catches NotFound, AlreadyExists, ValidationError, and ValueError exceptions,
+    prints a user-friendly error message, and exits the CLI with code 1.
+
+    Args:
+        func (Callable): The CLI command function to wrap.
+
+    Returns:
+        Callable: The wrapped function that raises `typer.Exit` on error.
+    """
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -99,9 +119,7 @@ def create_project(name: str = typer.Option(..., "--name", help="Project name"))
         name (str): Unique name for the project.
 
     Raises:
-        AlreadyExists: A project with the given name already exists.
-        ValidationError: The provided name failed validation.
-        typer.Exit: On any error (exit code 1).
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Example:
         $ python -m cli projects add --name "My New Project"
@@ -130,8 +148,7 @@ def delete_project(
         name (Optional[str]): Name of the project to delete.
 
     Raises:
-        NotFound: The specified project does not exist.
-        typer.Exit: No identifier provided or ID/name mismatch (exit code 1).
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
 
     Example:
         $ python -m cli projects rm --name "Old Project"
@@ -181,6 +198,9 @@ def list_project(
         limit (int): Maximum number of projects to display (default: 20).
         skip (int): Number of projects to skip for pagination (default: 0).
         
+    Raises:
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
+        
     Example:
         $ python -m cli projects list --limit 10 --skip 20
         Project id: 21    name: MyApp    created at: 2023-10-03 14:30:00
@@ -212,10 +232,7 @@ def update_project(
         new_name (str): New unique name for the project.
         
     Raises:
-        NotFound: If project with old_name doesn't exist.
-        AlreadyExists: If new_name is already taken by another project.
-        ValidationError: If new_name fails validation rules.
-        typer.Exit: On any error, exits with code 1.
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Example:
         $ python -m cli projects update --old-name "OldName" --new-name "NewName"
@@ -268,9 +285,7 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
         auto_assignee (bool): Enable automatic assignee assignment.
         
     Raises:
-        NotFound: If specified project doesn't exist.
-        ValidationError: If any field values fail validation.
-        typer.Exit: On validation errors or missing required project info (code 1).
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Examples:
         $ python -m cli issues add --project-name "MyApp" --title "Login Bug" --priority high --status open
@@ -363,8 +378,7 @@ def delete_issue(issue_id: int):
         issue_id (int): Unique identifier of the issue to delete.
         
     Raises:
-        NotFound: If issue with specified ID doesn't exist.
-        typer.Exit: On any error, exits with code 1.
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Example:
         $ python -m cli issues rm 42
@@ -408,8 +422,7 @@ def list_issue(
         tags_match_all (bool): If True, match ALL tags; if False, match ANY tag.
         
     Raises:
-        NotFound: If specified project doesn't exist.
-        typer.Exit: If project name and ID don't match (code 1).
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Examples:
         $ python -m cli issues list --limit 10 --priority high
@@ -515,9 +528,7 @@ def update_issue(
         tags (Optional[str]): Comma-separated tags to replace existing ones.
         
     Raises:
-        NotFound: If issue with specified ID doesn't exist.
-        ValidationError: If any field values fail validation.
-        typer.Exit: If no fields provided or validation errors (code 1).
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Examples:
         $ python -m cli issues update --id 42 --status closed --assignee "john_doe"
@@ -586,8 +597,7 @@ def rename_tag(
         new_name (str): New name for the tag.
         
     Raises:
-        NotFound: If tag with old_name doesn't exist.
-        typer.Exit: On any error, exits with code 1.
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Example:
         $ python -m cli tags rename --old-name "frontend" --new-name "ui"
@@ -611,8 +621,7 @@ def delete_tag(tag_id: int = typer.Option(..., "--id", help="Tag ID")):
         tag_id (int): Unique identifier of the tag to delete
         
     Raises:
-        NotFound: If tag with specified ID doesn't exist
-        typer.Exit: On any error, exits with code 1
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Example:
         $ python -m cli tags delete --id 5
@@ -631,6 +640,9 @@ def cleanup_tags():
     
     Performs maintenance by identifying and deleting tags that have no issue associations, helping keep the tag system clean 
     and organized.
+
+    Raises:
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
         
     Example:
         $ python -m cli tags cleanup
@@ -656,7 +668,10 @@ def list_tags(
         limit (int): Maximum number of tags to display (1-1000, default: 100)
         skip (int): Number of tags to skip for pagination (default: 0)
         stats (bool): If True, show usage statistics for each tag
-            
+
+    Raises:
+        typer.Exit: On NotFound, AlreadyExists, ValidationError, or ValueError (handled by decorator).
+        
     Examples:
         $ python -m cli tags list --limit 50
         $ python -m cli tags list --stats

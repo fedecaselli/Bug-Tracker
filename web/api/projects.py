@@ -39,7 +39,9 @@ def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
         schemas.ProjectOut: The created project.
 
     Raises:
-        HTTPException: If a project with the same name already exists.
+        404: If no projects are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_projects.create_project(db, data)
@@ -62,6 +64,10 @@ def list_projects(db: Session = Depends(get_db)):
 
     Returns:
         list[schemas.ProjectOut]: List of all projects.
+    Raises:
+        404: If no projects are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_projects.list_projects(db)
@@ -72,32 +78,6 @@ def list_projects(db: Session = Depends(get_db)):
     except (ValidationError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-# GET PROJECT
-'''
-@router.get("/by-name", response_model=schemas.ProjectOut)
-def get_project_by_name(name: str, db: Session = Depends(get_db)):
-    """
-    Retrieve a specific project by its name.
-
-    Args:
-        name (int): name of the project to retrieve.
-        db (Session): Database session.
-
-    Returns:
-        schemas.ProjectOut: The retrieved project.
-
-    Raises:
-        HTTPException: If the project is not found.
-    """
-    try:
-        return repo_projects.get_project_by_name(db, name)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except AlreadyExists as e: 
-        raise HTTPException(status_code=409, detail=str(e))
-    except (ValidationError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-'''
 
 # LIST ISSUES FOR PROJECT 
 @router.get("/{project_id}/issues", response_model=list[schemas.IssueOut])
@@ -113,7 +93,9 @@ def list_issues_for_project(project_id: int, db: Session = Depends(get_db)):
         list[schemas.IssueOut]: List of issues associated with the project.
 
     Raises:
-        HTTPException: If the project is not found.
+        404: If no projects are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_issues.list_issues(db, project_id=project_id)
@@ -139,7 +121,9 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
         schemas.ProjectOut: The retrieved project.
 
     Raises:
-        HTTPException: If the project is not found.
+        404: If no projects are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_projects.get_project(db, project_id)
@@ -167,7 +151,9 @@ def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = D
         schemas.ProjectOut: The updated project.
 
     Raises:
-        HTTPException: If the project is not found or if the updated name already exists.
+        404: If no projects are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_projects.update_project(db, project_id, data)
@@ -194,7 +180,9 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
         bool: True if the project was successfully deleted.
 
     Raises:
-        HTTPException: If the project is not found.
+        404: If no projects are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_projects.delete_project(db, project_id)

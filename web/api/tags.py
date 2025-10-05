@@ -27,7 +27,6 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 
 
 
-
 # LIST ALL TAGS
 @router.get("/", response_model=list[schemas.TagOut])
 def list_tags(db: Session = Depends(get_db), 
@@ -43,6 +42,11 @@ def list_tags(db: Session = Depends(get_db),
 
     Returns:
         list[schemas.TagOut]: List of tags.
+        
+    Raises:
+        404: If no tags are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_tags.list_tags(db, skip=skip, limit=limit)
@@ -65,6 +69,11 @@ def cleanup_unused_tags(db: Session = Depends(get_db)):
 
     Returns:
         dict: A message confirming the cleanup and the number of tags removed.
+    
+    Raises:
+        404: If no tags are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         count = repo_tags.remove_tags_with_no_issue(db)
@@ -97,7 +106,9 @@ def rename_tag(
         dict: A message confirming the renaming.
 
     Raises:
-        HTTPException: If the tag is not found or if the new name is invalid.
+        404: If no tags are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         repo_tags.rename_tags_everywhere(db, old_name, new_name)
@@ -120,6 +131,11 @@ def get_tag_usage_stats(db: Session = Depends(get_db)):
 
     Returns:
         list[dict]: List of tag usage statistics.
+    
+    Raises:
+        404: If no tags are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_tags.get_tag_usage_stats(db)
@@ -144,7 +160,9 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
         dict: A message confirming the deletion.
 
     Raises:
-        HTTPException: If the tag is not found.
+        404: If no tags are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         repo_tags.delete_tag(db, tag_id)
@@ -170,7 +188,9 @@ def get_tag(tag_id: int, db: Session = Depends(get_db)):
         schemas.TagOut: The retrieved tag.
 
     Raises:
-        HTTPException: If the tag is not found.
+        404: If no tags are found.
+        409: If a conflict occurs.
+        422: If validation fails.
     """
     try:
         return repo_tags.get_tag(db, tag_id)

@@ -1,3 +1,7 @@
+"""
+Unit tests for FastAPI issues endpoints.
+"""
+
 import pytest
 import tempfile
 import os
@@ -17,7 +21,7 @@ def file_engine():
     
     eng = create_engine(f"sqlite:///{temp_db.name}", future=True)
 
-    #enforce FK
+    # Enforce foreign key constraints for SQLite
     @event.listens_for(eng, "connect")
     def set_sqlite_pragma(dbapi_conn, _):
         cur = dbapi_conn.cursor()
@@ -35,6 +39,7 @@ def file_engine():
 
 @pytest.fixture()
 def file_db(file_engine):
+    # Provide a SQLAlchemy session bound to the temporary file database
     TestingSessionLocal = sessionmaker(bind=file_engine, autoflush=False, autocommit=False, future=True)
     session = TestingSessionLocal()
     try:
@@ -44,16 +49,19 @@ def file_db(file_engine):
 
 @pytest.fixture
 def db_session(file_db):
+    # Alias for file_db fixture
     yield file_db
 
 @pytest.fixture(autouse=True)
 def override_get_db(file_db):
+    # Override FastAPI's get_db dependency to use the test database
     def _get_db():
         yield file_db
     app.dependency_overrides[get_db] = _get_db
 
 @pytest.fixture
 def project(file_db):
+    # Create and persist a sample project for tests
     p = Project(name="APIProject")
     file_db.add(p)
     file_db.commit()
@@ -63,6 +71,7 @@ def project(file_db):
 client = TestClient(app)
 
 def test_create_issue_success(file_db, project):
+    # Test creating an issue with valid data (should succeed)
     payload = {
         "project_id": project.project_id,
         "title": "API Issue",
@@ -76,6 +85,7 @@ def test_create_issue_success(file_db, project):
     assert data["project_id"] == project.project_id
 
 def test_create_issue_invalid_project(file_db):
+    # Test creating an issue with a non-existent project (should return 404)
     payload = {
         "project_id": 999999,
         "title": "API Issue",
@@ -86,6 +96,7 @@ def test_create_issue_invalid_project(file_db):
     assert response.status_code == 404
 
 def test_create_issue_invalid_priority(file_db, project):
+    # Test creating an issue with an invalid priority (should fail validation)
     payload = {
         "project_id": project.project_id,
         "title": "API Issue",
@@ -96,6 +107,7 @@ def test_create_issue_invalid_priority(file_db, project):
     assert response.status_code == 422
 
 def test_create_issue_invalid_status(file_db, project):
+    # Test creating an issue with an invalid status (should fail validation)
     payload = {
         "project_id": project.project_id,
         "title": "API Issue",
@@ -106,6 +118,7 @@ def test_create_issue_invalid_status(file_db, project):
     assert response.status_code == 422
 
 def test_create_issue_empty_title(file_db, project):
+    # Test creating an issue with an empty title (should fail validation)
     payload = {
         "project_id": project.project_id,
         "title": "",
@@ -116,6 +129,7 @@ def test_create_issue_empty_title(file_db, project):
     assert response.status_code == 422
 
 def test_create_issue_long_title(file_db, project):
+    # Test creating an issue with a title longer than allowed (should fail validation)
     payload = {
         "project_id": project.project_id,
         "title": "a" * 101,
@@ -126,6 +140,7 @@ def test_create_issue_long_title(file_db, project):
     assert response.status_code == 422
 
 def test_get_issue_success(file_db, project):
+    # Test retrieving an issue by its ID (should succeed)
     issue = Issue(
         project_id=project.project_id,
         title="GetMe",
@@ -140,10 +155,12 @@ def test_get_issue_success(file_db, project):
     assert response.json()["title"] == "GetMe"
 
 def test_get_issue_not_found():
+    # Test retrieving an issue by a non-existent ID (should return 404)
     response = client.get("/issues/999999")
     assert response.status_code == 404
 
 def test_list_issues(file_db, project):
+    # Test listing all issues (should return all created issues)
     issue1 = Issue(project_id=project.project_id, title="A", priority="low", status="open")
     issue2 = Issue(project_id=project.project_id, title="B", priority="high", status="closed")
     file_db.add_all([issue1, issue2])
@@ -154,6 +171,7 @@ def test_list_issues(file_db, project):
     assert "A" in titles and "B" in titles
 
 def test_list_issues_with_filters(file_db, project):
+    # Test listing issues with filters (should return only matching issues)
     issue1 = Issue(project_id=project.project_id, title="FilterMe", priority="low", status="open", assignee="alice")
     file_db.add(issue1)
     file_db.commit()
@@ -162,6 +180,7 @@ def test_list_issues_with_filters(file_db, project):
     assert all(i["assignee"] == "alice" for i in response.json())
 
 def test_update_issue_success(file_db, project):
+    # Test updating an issue with valid data (should succeed)
     issue = Issue(project_id=project.project_id, title="ToUpdate", priority="low", status="open")
     file_db.add(issue)
     file_db.commit()
@@ -178,11 +197,13 @@ def test_update_issue_success(file_db, project):
     assert response.json()["status"] == "closed"
 
 def test_update_issue_not_found():
+    # Test updating a non-existent issue (should return 404)
     payload = {"title": "Updated"}
     response = client.put("/issues/999999", json=payload)
     assert response.status_code == 404
 
 def test_delete_issue_success(file_db, project):
+    # Test deleting an existing issue (should succeed and issue should be gone)
     issue = Issue(project_id=project.project_id, title="ToDelete", priority="low", status="open")
     file_db.add(issue)
     file_db.commit()
@@ -192,28 +213,33 @@ def test_delete_issue_success(file_db, project):
     assert "deleted successfully" in response.json()["message"]
 
 def test_delete_issue_not_found():
+    # Test deleting a non-existent issue (should return 404)
     response = client.delete("/issues/999999")
     assert response.status_code == 404
 
 def test_auto_assign_issue_success(file_db, project):
+    # Test auto-assigning an issue to the best assignee (should succeed or return 400/404 if no assignee found)
     issue = Issue(project_id=project.project_id, title="AutoAssign", priority="high", status="open")
     file_db.add(issue)
     file_db.commit()
     file_db.refresh(issue)
     response = client.post(f"/issues/{issue.issue_id}/auto-assign")
-    # Accept 200 or 400 depending on assignee logic
-    assert response.status_code in (200, 400)
+    # Accept 200, 400, or 404 depending on assignee logic
+    assert response.status_code in (200, 400, 404)
 
 def test_auto_assign_issue_not_found():
+    # Test auto-assigning a non-existent issue (should return 404)
     response = client.post("/issues/999999/auto-assign")
     assert response.status_code == 404
 
 def test_suggest_tags_api():
+    # Test suggesting tags for an issue using the AI-based endpoint (should return a list of tags)
     response = client.post("/issues/suggest-tags", params={"title": "UI error", "description": "frontend", "log": "timeout"})
     assert response.status_code == 200
     assert isinstance(response.json()["suggested_tags"], list)
 
 def test_search_issues_api(file_db, project):
+    # Test searching for issues by title substring (should return matching issues)
     issue = Issue(project_id=project.project_id, title="SearchMe", priority="low", status="open")
     file_db.add(issue)
     file_db.commit()
@@ -223,7 +249,7 @@ def test_search_issues_api(file_db, project):
     assert any(i["title"] == "SearchMe" for i in response.json())
 
 def test_debug_create_issue(file_db, project):
-    """Debug test to see what's causing the 422 error"""
+    # Debug test to see what's causing the 422 error (should succeed)
     payload = {
         "project_id": project.project_id,
         "title": "API Issue",
@@ -236,6 +262,7 @@ def test_debug_create_issue(file_db, project):
     assert response.status_code == 200
     
 def test_search_issues_api(file_db, project):
+    # Test searching for issues by title substring (should return matching issues)
     issue = Issue(project_id=project.project_id, title="SearchMe", priority="low", status="open")
     file_db.add(issue)
     file_db.commit()
@@ -246,10 +273,8 @@ def test_search_issues_api(file_db, project):
     assert response.status_code == 200
     assert any(i["title"] == "SearchMe" for i in response.json())
     
-
 def test_create_duplicate_issue(db, project):
-    """Test that creating a duplicate issue raises AlreadyExists"""
-    # Create first issue
+    # Test that creating a duplicate issue raises AlreadyExists (should return 409)
     issue1_data = {
         "project_id": project.project_id,
         "title": "Bug Report",
@@ -269,8 +294,7 @@ def test_create_duplicate_issue(db, project):
     assert "identical issue already exists" in response2.json()["detail"]
 
 def test_create_duplicate_issue_different_case(db, project):
-    """Test that issues with same content but different case are considered duplicates"""
-    # Create first issue
+    # Test that issues with same content but different case are considered duplicates
     issue1_data = {
         "project_id": project.project_id,
         "title": "Bug Report",
@@ -294,8 +318,7 @@ def test_create_duplicate_issue_different_case(db, project):
     assert response3.status_code == 409
 
 def test_update_issue_to_duplicate(db, project):
-    """Test that updating an issue to match another issue raises AlreadyExists"""
-    # Create two different issues
+    # Test that updating an issue to match another issue raises AlreadyExists (should return 409)
     issue1_data = {
         "project_id": project.project_id,
         "title": "Bug Report 1",
@@ -332,8 +355,7 @@ def test_update_issue_to_duplicate(db, project):
     assert "identical issue already exists" in response.json()["detail"]
 
 def test_update_issue_same_data(db, project):
-    """Test that updating an issue with the same data doesn't raise error"""
-    # Create issue
+    # Test that updating an issue with the same data doesn't raise error (should succeed)
     issue_data = {
         "project_id": project.project_id,
         "title": "Bug Report",
@@ -352,8 +374,7 @@ def test_update_issue_same_data(db, project):
     assert response.json()["issue_id"] == issue_id
 
 def test_update_issue_partial_duplicate(db, project):
-    """Test that partial updates that create duplicates are caught"""
-    # Create first issue
+    # Test that partial updates that create duplicates are caught (should return 409)
     issue1_data = {
         "project_id": project.project_id,
         "title": "Bug Report",
@@ -382,8 +403,7 @@ def test_update_issue_partial_duplicate(db, project):
     assert "identical issue already exists" in response.json()["detail"]
 
 def test_duplicate_issue_different_projects(db):
-    """Test that identical issues in different projects are allowed"""
-    # Create two projects
+    # Test that identical issues in different projects are allowed (should succeed)
     project1_data = {"name": "Project 1"}
     project2_data = {"name": "Project 2"}
     
@@ -412,8 +432,7 @@ def test_duplicate_issue_different_projects(db):
     assert response2.status_code == 200
 
 def test_duplicate_issue_with_tags(db, project):
-    """Test that issues with identical tags are considered duplicates"""
-    # Create first issue with tags
+    # Test that issues with identical tags are considered duplicates (should return 409)
     issue1_data = {
         "project_id": project.project_id,
         "title": "Bug Report",

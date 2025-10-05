@@ -1,3 +1,7 @@
+"""
+Unit tests for the AssigneeSuggester automation logic.
+"""
+from core.repos.exceptions import NotFound
 import pytest
 from sqlalchemy.orm import Session
 from core.models import Project, Issue, Tag
@@ -126,10 +130,11 @@ def test_auto_assign_sets_assignee(db, suggester):
     db.refresh(issue)
     assert success is True
     assert issue.assignee == "alice"
+    
 
 def test_auto_assign_returns_false_if_no_suitable_assignee(db, suggester):
-    # Auto-assign returns False if no suitable assignee
+    # Auto-assign returns NotFound if no suitable assignee
     project = setup_project(db)
     issue = setup_issue(db, project, "Bug 1", assignee=None, status="open", priority="high", tags=["bug"])
-    success = suggester.auto_assign(db, issue.issue_id)
-    assert success is False
+    with pytest.raises(NotFound):
+        suggester.auto_assign(db, issue.issue_id)

@@ -1,3 +1,7 @@
+"""
+Unit tests for SQLAlchemy ORM models: Project, Issue, Tag, and their relationships.
+"""
+
 import pytest
 from sqlalchemy.exc import IntegrityError, DataError
 from core.models import Project, Issue, Tag, issue_tags
@@ -37,7 +41,7 @@ def test_create_project_long_name(db: Session):
     # Create project with name exceeding 200 chars (should fail)
     project = Project(name="a" * 201)
     db.add(project)
-    with pytest.raises(IntegrityError):  # <-- Change from DataError to IntegrityError
+    with pytest.raises(IntegrityError):  
         db.commit()
     db.rollback()
 
@@ -282,7 +286,7 @@ def test_create_tag_long_name(db: Session):
     # Create tag with name exceeding 100 chars (should fail)
     tag = Tag(name="a" * 101)
     db.add(tag)
-    with pytest.raises(IntegrityError):  # <-- Change from DataError to IntegrityError
+    with pytest.raises(IntegrityError):  
         db.commit()
     db.rollback()
 

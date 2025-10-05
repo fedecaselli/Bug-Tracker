@@ -7,6 +7,16 @@ from core import models
 
 @pytest.fixture(scope="function")   
 def engine():
+    """
+    Create an in-memory SQLite engine for testing.
+
+    Returns:
+        Engine: SQLAlchemy engine connected to an in-memory SQLite database.
+
+    Notes:
+        - Foreign key constraints are enforced for SQLite.
+        - Database schema is created before each test function.
+    """
     eng = create_engine("sqlite:///:memory:", future=True)
 
     #enforce FK
@@ -22,6 +32,18 @@ def engine():
 
 @pytest.fixture()
 def db(engine):
+    """
+    Provide a SQLAlchemy session bound to the in-memory test database.
+
+    Args:
+        engine: SQLAlchemy engine fixture.
+
+    Yields:
+        Session: SQLAlchemy session for database operations.
+
+    Finalizes:
+        Closes the session after each test.
+    """
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
     session = TestingSessionLocal()
     try:

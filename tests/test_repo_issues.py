@@ -15,6 +15,7 @@ from core.repos.issues import (
 from core.repos.exceptions import NotFound
 
 def setup_project(db, name="TestProject"):
+    # Helper to create and persist a project for tests
     project = Project(name=name)
     db.add(project)
     db.commit()
@@ -22,6 +23,7 @@ def setup_project(db, name="TestProject"):
     return project
 
 def test_create_and_get_issue(db):
+    # Test creating an issue and retrieving it by ID
     project = setup_project(db)
     issue = create_issue(db, IssueCreate(
         project_id=project.project_id,
@@ -38,6 +40,7 @@ def test_create_and_get_issue(db):
     assert fetched.issue_id == issue.issue_id
 
 def test_create_issue_invalid_project(db):
+    # Test creating an issue with a non-existent project (should raise NotFound)
     with pytest.raises(NotFound):
         create_issue(db, IssueCreate(
             project_id=999,
@@ -51,6 +54,7 @@ def test_create_issue_invalid_project(db):
         ))
 
 def test_update_issue(db):
+    # Test updating an issue's title, status, and priority
     project = setup_project(db)
     issue = create_issue(db, IssueCreate(
         project_id=project.project_id,
@@ -68,6 +72,7 @@ def test_update_issue(db):
     assert updated.status == "closed"
 
 def test_delete_issue(db):
+    # Test deleting an issue and verifying it no longer exists
     project = setup_project(db)
     issue = create_issue(db, IssueCreate(
         project_id=project.project_id,
@@ -84,6 +89,7 @@ def test_delete_issue(db):
         get_issue(db, issue.issue_id)
 
 def test_list_issues(db):
+    # Test listing all issues and filtering by assignee
     project = setup_project(db)
     create_issue(db, IssueCreate(
         project_id=project.project_id,

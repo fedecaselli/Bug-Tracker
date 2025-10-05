@@ -8,6 +8,3 @@ venv/
 # SQLite database files
 #.db - 
 
-
-bugtracker.db
-test.db

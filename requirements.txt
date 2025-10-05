@@ -6,3 +6,7 @@ typer
 httpx
 jinja2
 
+python-multipart
+python-dotenv
+pydantic
+

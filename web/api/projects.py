@@ -73,6 +73,7 @@ def list_projects(db: Session = Depends(get_db)):
         raise HTTPException(status_code=422, detail=str(e))
 
 # GET PROJECT
+'''
 @router.get("/by-name", response_model=schemas.ProjectOut)
 def get_project_by_name(name: str, db: Session = Depends(get_db)):
     """
@@ -96,7 +97,7 @@ def get_project_by_name(name: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail=str(e))
     except (ValidationError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
-
+'''
 
 # LIST ISSUES FOR PROJECT 
 @router.get("/{project_id}/issues", response_model=list[schemas.IssueOut])

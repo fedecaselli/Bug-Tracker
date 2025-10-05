@@ -477,8 +477,12 @@ def list_issue(
             if project_name:
                 project_display = project_name
             else:
-                project_display = ""
-            typer.echo(f"Issue id: {issue.issue_id:} \ntitle: {issue.title} \ndescription: {issue.description} \nlog: {issue.log} \nsummary: {issue.summary} \npriority: {issue.priority}\nstatus: {issue.status} \nassignee: {issue.assignee} \ntags: {tags_str} \nproject_id{issue.project_id} \nproject_name:{project_display}\n\n")
+                try:
+                    project = repo_get_project(db, issue.project_id)
+                    project_display = project.name
+                except NotFound:
+                    project_display = f"Unknown (ID: {issue.project_id})"
+            typer.echo(f"Issue id: {issue.issue_id:} \ntitle: {issue.title} \ndescription: {issue.description} \nlog: {issue.log} \nsummary: {issue.summary} \npriority: {issue.priority}\nstatus: {issue.status} \nassignee: {issue.assignee} \ntags: {tags_str} \nproject_id: {issue.project_id} \nproject_name:{project_display}\n\n")
 
 
 @issue_app.command("update")

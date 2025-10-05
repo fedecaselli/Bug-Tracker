@@ -1,4 +1,4 @@
-# Bug-Tracker App
+# Bug-Tracker 
 
 A comprehensive issue tracking system with both web interface and command-line interface, featuring automated tag generation and intelligent assignee suggestions.
 

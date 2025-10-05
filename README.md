@@ -1,4 +1,4 @@
-# Bug-Tracker
+# Bug-Tracker App
 
 A comprehensive issue tracking system with both web interface and command-line interface, featuring automated tag generation and intelligent assignee suggestions.
 
@@ -10,7 +10,7 @@ A comprehensive issue tracking system with both web interface and command-line i
 - **Issue Tracking**: Complete CRUD operations with filtering and search capabilities
 - **Automated Tag Generation**: AI-powered tag suggestions based on issue content
 - **Smart Assignee Assignment**: Intelligent assignee suggestions based on expertise and workload
-- **Analytics Dashboard**: Visual insights with charts and statistics
+- **Analytics Dashboard**: Visual insights with charts
 - **Tag Management**: Organize and analyze tag usage across projects
 
 ## Quick Start

@@ -122,7 +122,7 @@ python -m cli tags cleanup
 ### Project Structure
 ```
 Bug-Tracker/
-├── app.py                 # FastAPI web application
+├── app.py                # FastAPI web application
 ├── config.py             # Configuration settings
 ├── requirements.txt      # Python dependencies
 ├── cli/                  # Command line interface
@@ -133,13 +133,13 @@ Bug-Tracker/
 │   ├── schemas.py       # Pydantic schemas
 │   ├── db.py           # Database configuration
 │   ├── validation.py   # Data validation
-│   ├── automation/     # AI features
+│   ├── automation/     # Automation features
 │   │   ├── tag_generator.py      # Auto tag generation
-│   │   └── assignee_suggestion.py # Smart assignment
+│   │   └── assignee_suggestion.py # Smart assignee assigner
 │   └── repos/          # Data access layer
-│       ├── projects.py
-│       ├── issues.py
-│       └── tags.py
+│       ├── projects.py     # Project repository - handles project creation, retrieval, updates, deletion
+│       ├── issues.py       # Issue repository - manages issue CRUD, filtering, tag associations, auto-assignment
+│       └── tags.py         # Tag repository - tag operations, usage stats, cleanup, renaming
 ├── web/                 # Web interface
 │   ├── api/            # REST API endpoints
 │   ├── templates/      # HTML templates
@@ -153,7 +153,9 @@ Bug-Tracker/
 - **Frontend**: HTML5, CSS3, JavaScript, Chart.js
 - **CLI**: Typer
 - **Testing**: pytest
-- **AI Features**: Custom keyword-based algorithms
+- **Automation Features**: 
+  - **Tag Generation**: Custom keyword-based algorithms
+  - **Assignee Assignment**: Data-driven expertise and workload analysis
 
 ## Automation Features
 
@@ -176,18 +178,17 @@ Keywords = {
 Assignee suggestions are based on:
 - Tag expertise (success rate with specific tags)
 - Current workload (number of open issues)
-- Issue priority (high-priority issues get expert assignment)
 
 Assignment logic only applies to:
 - Status: "open" (unresolved issues)
-- Priority: "high" (critical issues need immediate attention)
+- Priority: "high" (critical issues need immediate attention by best experts)
 
 ## Database Schema
 
 The system uses SQLite with the following main entities:
 
 - **Projects**: Container for organizing issues
-- **Issues**: Core tracking entity with title, description, status, priority, assignee
+- **Issues**: Core tracking entity with title, description, log, summary, status, priority, assignee
 - **Tags**: Categorization system with many-to-many relationship to issues
 - **Issue-Tag Association**: Junction table for flexible tagging
 
@@ -230,8 +231,6 @@ pytest tests/test_api_*.py      # API tests
 pytest tests/test_repo_*.py     # Repository tests
 pytest tests/test_cli.py        # CLI tests
 
-# Run with coverage
-pytest --cov=core --cov=cli --cov=web
 ```
 
 ## Configuration
@@ -239,14 +238,12 @@ pytest --cov=core --cov=cli --cov=web
 The application can be configured through environment variables or `config.py`:
 
 - `DATABASE_URL`: Database connection string (default: SQLite)
-- `DEBUG`: Enable debug mode
-- `API_PREFIX`: API route prefix
 
 ## Development
 
 ### Code Structure
 
-- **Repository Pattern**: Data access is abstracted through repository classes
+- **Repository Pattern**: Clean separation between business logic and data access through repository classes
 - **Schema Validation**: Pydantic schemas ensure data integrity
 - **Error Handling**: Consistent exception handling across CLI and API
 - **Separation of Concerns**: Clear separation between web, CLI, and core logic
@@ -259,16 +256,3 @@ The application can be configured through environment variables or `config.py`:
 4. Add API endpoints in `web/api/`
 5. Add CLI commands in `cli/main.py`
 6. Create tests in `tests/`
-
-## License
-
-See LICENSE file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request

@@ -142,4 +142,132 @@ def validate_tag_names(tag_names: list) -> list:
     return validated_tags
 
 
+# Reusable helpers for Pydantic models and repository layer
+
+def require_title(title: str | None) -> str:
+    """
+    Ensure a title is present and valid.
+
+    Args:
+        title (str | None): Title to validate.
+
+    Returns:
+        str: Validated title.
+
+    Raises:
+        ValueError: If title is missing or invalid.
+    """
+    if title is None:
+        raise ValueError("Title is required")
+    return validate_title(title)
+
+
+def optional_title(title: str | None) -> str | None:
+    """
+    Validate a title when provided.
+
+    Args:
+        title (str | None): Title to validate.
+
+    Returns:
+        str | None: Validated title or None.
+
+    Raises:
+        ValueError: If title is invalid.
+    """
+    if title is None:
+        return None
+    return validate_title(title)
+
+
+def require_priority(priority: str | None) -> str:
+    """
+    Ensure a priority is present and valid.
+
+    Args:
+        priority (str | None): Priority to validate.
+
+    Returns:
+        str: Validated priority.
+
+    Raises:
+        ValueError: If priority is missing or invalid.
+    """
+    if priority is None:
+        raise ValueError("Priority is required")
+    return validate_priority(priority)
+
+
+def optional_priority(priority: str | None) -> str | None:
+    """
+    Validate a priority when provided.
+
+    Args:
+        priority (str | None): Priority to validate.
+
+    Returns:
+        str | None: Validated priority or None.
+
+    Raises:
+        ValueError: If priority is invalid.
+    """
+    if priority is None:
+        return None
+    return validate_priority(priority)
+
+
+def normalize_status(status: str | None, default: str | None = None) -> str | None:
+    """
+    Validate a status and optionally fall back to a default when missing.
+
+    Args:
+        status (str | None): Status to validate.
+        default (str | None): Default value when status is None.
+
+    Returns:
+        str | None: Validated status or the default value.
+
+    Raises:
+        ValueError: If status is invalid.
+    """
+    if status is None:
+        return default
+    return validate_status(status)
+
+
+def optional_project_name(name: str | None) -> str | None:
+    """
+    Validate a project name when provided.
+
+    Args:
+        name (str | None): Project name.
+
+    Returns:
+        str | None: Validated project name or None.
+
+    Raises:
+        ValueError: If name is invalid.
+    """
+    if name is None:
+        return None
+    return validate_project_name(name)
+
+
+def normalize_tag_names(tag_names: list | None, keep_none: bool = False) -> list | None:
+    """
+    Validate a list of tag names with control over how None values are treated.
+
+    Args:
+        tag_names (list | None): List of tag names.
+        keep_none (bool): If True, returns None when tag_names is None; otherwise returns [].
+
+    Returns:
+        list | None: Validated tag names, [] when empty, or None when keep_none=True and input is None.
+
+    Raises:
+        ValueError: If any tag name is invalid.
+    """
+    if tag_names is None:
+        return None if keep_none else []
+    return validate_tag_names(tag_names)
 

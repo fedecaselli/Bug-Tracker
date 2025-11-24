@@ -41,7 +41,3 @@ app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
 #create database tables
 Base.metadata.create_all(bind=engine)
-
-
-#create database tables
-Base.metadata.create_all(bind=engine)

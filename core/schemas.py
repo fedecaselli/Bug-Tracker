@@ -14,8 +14,17 @@ Schema Pattern:
 from typing import Optional, List
 from pydantic import BaseModel, Field, constr, field_validator
 from datetime import datetime    
-from core.validation import (validate_priority, validate_status, validate_title, validate_project_name, validate_tag_name, validate_tag_names)
-from pydantic import ValidationError
+from core.validation import (
+    normalize_status,
+    normalize_tag_names,
+    optional_priority,
+    optional_project_name,
+    optional_title,
+    require_priority,
+    require_title,
+    validate_project_name,
+    validate_tag_name,
+)
 
 
 # TAG SCHEMAS
@@ -142,9 +151,7 @@ class ProjectUpdate(BaseModel):
         Raises:
             ValueError: If the project name is invalid.
         """
-        if name is None:
-            return name
-        return validate_project_name(name)
+        return optional_project_name(name)
     
 class ProjectOut(BaseModel):
     """
@@ -210,7 +217,7 @@ class IssueBase(BaseModel):
         Raises:
             ValueError: If the title is invalid.
         """
-        return validate_title(title)
+        return require_title(title)
 
     @field_validator('priority', mode='before')
     @classmethod
@@ -225,12 +232,9 @@ class IssueBase(BaseModel):
             str: Validated priority.
 
         Raises:
-            ValidationError: If priority is missing.
             ValueError: If priority is invalid.
         """
-        if priority is None:
-            raise ValidationError("Priority is required")
-        return validate_priority(priority)
+        return require_priority(priority)
     
     @field_validator('status', mode='before')
     @classmethod
@@ -247,9 +251,7 @@ class IssueBase(BaseModel):
         Raises:
             ValueError: If status is invalid.
         """
-        if status is None:
-            return "open"  
-        return validate_status(status)
+        return normalize_status(status, default="open")
     
 class IssueCreate(IssueBase):
     """
@@ -287,7 +289,7 @@ class IssueCreate(IssueBase):
         Raises:
             ValueError: If any tag name is invalid.
         """
-        return validate_tag_names(tag_names or [])
+        return normalize_tag_names(tag_names)
     
 class IssueUpdate(BaseModel):
     """
@@ -336,9 +338,7 @@ class IssueUpdate(BaseModel):
         Raises:
             ValueError: If the title is invalid.
         """
-        if title is None:
-            return title
-        return validate_title(title)
+        return optional_title(title)
 
     @field_validator('priority', mode='before')
     @classmethod
@@ -355,9 +355,7 @@ class IssueUpdate(BaseModel):
         Raises:
             ValueError: If priority is invalid.
         """
-        if priority is None:
-            return priority
-        return validate_priority(priority)
+        return optional_priority(priority)
     
     @field_validator('status', mode='before')
     @classmethod
@@ -374,9 +372,7 @@ class IssueUpdate(BaseModel):
         Raises:
             ValueError: If status is invalid.
         """
-        if status is None:
-            return status
-        return validate_status(status)
+        return normalize_status(status)
 
     @field_validator('tag_names', mode='before')
     @classmethod
@@ -393,9 +389,7 @@ class IssueUpdate(BaseModel):
         Raises:
             ValueError: If any tag name is invalid.
         """
-        if tag_names is None:
-            return tag_names
-        return validate_tag_names(tag_names)
+        return normalize_tag_names(tag_names, keep_none=True)
 
     
 class IssueOut(BaseModel):

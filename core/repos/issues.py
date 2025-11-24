@@ -14,9 +14,18 @@ from core.schemas import IssueCreate, IssueUpdate
 from core import models
 from .exceptions import NotFound, AlreadyExists
 from .tags import get_or_create_tags, update_tags
-from core.automation.tag_generator import TagGenerator
-from core.automation.assignee_suggestion import AssigneeSuggester 
-from core.validation import (validate_title, validate_priority, validate_status, validate_tag_names)
+from core.automation import (
+    AssigneeStrategy,
+    TagSuggester,
+    default_assignee_strategy,
+    default_tag_suggester,
+)
+from core.validation import (
+    normalize_status,
+    normalize_tag_names,
+    optional_priority,
+    optional_title,
+)
 from sqlalchemy import case
 
 
@@ -69,7 +78,12 @@ def _check_duplicate_issue(db: Session, project_id: int, title: str, description
     return False
 
 #CREATE ISSUE
-def create_issue(db:Session, data: IssueCreate) -> Issue:
+def create_issue(
+    db: Session,
+    data: IssueCreate,
+    tag_suggester: TagSuggester | None = None,
+    assignee_strategy: AssigneeStrategy | None = None,
+) -> Issue:
     """
     Create a new issue in the database.
 
@@ -124,9 +138,15 @@ def create_issue(db:Session, data: IssueCreate) -> Issue:
         all_tags = []
     
     # Auto-generate tags if requestes
+    tag_suggester = tag_suggester or default_tag_suggester()
+    assignee_strategy = assignee_strategy or default_assignee_strategy()
+
     if data.auto_generate_tags:
-        tag_generator = TagGenerator()
-        generated_tags = tag_generator.generate_tags(title=data.title, description=data.description or "", log=data.log or "")
+        generated_tags = tag_suggester.generate_tags(
+            title=data.title,
+            description=data.description or "",
+            log=data.log or "",
+        )
         for tag in generated_tags:
             if tag not in all_tags:
                 all_tags.append(tag)
@@ -142,19 +162,14 @@ def create_issue(db:Session, data: IssueCreate) -> Issue:
     db.refresh(issue)
     
     # Auto-assign an assignee if requested and no assignee is provided
-    if data.auto_generate_assignee and not data.assignee:  
-        suggester = AssigneeSuggester()
-    
-        # Get the tag names that were just assigned to the issue
-        issue_tag_names = []
-        if issue.tags:
-            for tag in issue.tags:
-                issue_tag_names.append(tag.name)
-        
-        # Suggest assignee based on predefined logic
-        suggested_assignee = suggester.suggest_assignee(db, issue_tag_names, issue.status, issue.priority)
-        
-        # Update the issue with the suggested assignee
+    if data.auto_generate_assignee and not data.assignee:
+        issue_tag_names = [tag.name for tag in issue.tags] if issue.tags else []
+        suggested_assignee = assignee_strategy.suggest_assignee(
+            db,
+            issue_tag_names,
+            issue.status,
+            issue.priority,
+        )
         if suggested_assignee:
             issue.assignee = suggested_assignee
             db.commit()
@@ -332,17 +347,10 @@ def list_issues(
             raise NotFound(f"Project {project_id} not found")
 
     # Validate and normalize filter values using direct validation functions
-    if priority is not None:
-        priority = validate_priority(priority)  
-    
-    if status is not None:
-        status = validate_status(status)  
-    
-    if title is not None:
-        title = validate_title(title)  
-    
-    if tags is not None:
-        tags = validate_tag_names(tags)  
+    priority = optional_priority(priority)
+    status = normalize_status(status)
+    title = optional_title(title)
+    tags = normalize_tag_names(tags, keep_none=True)
         
     query = db.query(models.Issue)
     

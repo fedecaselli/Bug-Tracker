@@ -19,8 +19,12 @@ from core import schemas
 from core.db import get_db
 from core.repos import issues as repo_issues
 from core.repos.exceptions import NotFound, AlreadyExists
-from core.automation.tag_generator import TagGenerator  
-from core.automation.assignee_suggestion import AssigneeSuggester  
+from core.automation import (
+    AssigneeStrategy,
+    TagSuggester,
+    default_assignee_strategy,
+    default_tag_suggester,
+)
 from core.schemas import IssueOut
 from pydantic import ValidationError 
 
@@ -32,8 +36,21 @@ from functools import wraps
 
 
 #CREATE ISSUE
+def get_tag_suggester() -> TagSuggester:
+    return default_tag_suggester()
+
+
+def get_assignee_strategy() -> AssigneeStrategy:
+    return default_assignee_strategy()
+
+
 @router.post("/", response_model=schemas.IssueOut)
-def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
+def create_issue(
+    data: schemas.IssueCreate,
+    db: Session = Depends(get_db),
+    tag_suggester: TagSuggester = Depends(get_tag_suggester),
+    assignee_strategy: AssigneeStrategy = Depends(get_assignee_strategy),
+):
     """
     Create a new issue.
 
@@ -50,7 +67,12 @@ def create_issue(data: schemas.IssueCreate, db: Session = Depends(get_db)):
         422: If validation fails.
     """
     try:
-        return repo_issues.create_issue(db, data)
+        return repo_issues.create_issue(
+            db,
+            data,
+            tag_suggester=tag_suggester,
+            assignee_strategy=assignee_strategy,
+        )
     except NotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
     except AlreadyExists as e: 
@@ -108,7 +130,11 @@ def list_issues(
     
 # AUTO-ASSIGN TASK TO ASSIGNEE    
 @router.post("/{issue_id}/auto-assign", response_model=dict)
-def auto_assign_issue(issue_id: int, db: Session = Depends(get_db)):
+def auto_assign_issue(
+    issue_id: int,
+    db: Session = Depends(get_db),
+    assignee_strategy: AssigneeStrategy = Depends(get_assignee_strategy),
+):
     """
     Automatically assign an issue to the best available assignee.
 
@@ -126,8 +152,7 @@ def auto_assign_issue(issue_id: int, db: Session = Depends(get_db)):
         422: If validation fails.
     """
     try:
-        suggester = AssigneeSuggester()
-        success = suggester.auto_assign(db, issue_id)
+        success = assignee_strategy.auto_assign(db, issue_id)
         if success:
             issue_after = repo_issues.get_issue(db, issue_id)
             return {"assigned_to": issue_after.assignee}
@@ -147,7 +172,8 @@ def auto_assign_issue(issue_id: int, db: Session = Depends(get_db)):
 def suggest_tags_api(
     title: str = Query(..., description="Issue title"),
     description: Optional[str] = Query(None, description="Issue description"),
-    log: Optional[str] = Query(None, description="Error log")
+    log: Optional[str] = Query(None, description="Error log"),
+    tag_suggester: TagSuggester = Depends(get_tag_suggester),
 ):
     """
     Generate AI-based tag suggestions for an issue.
@@ -161,11 +187,10 @@ def suggest_tags_api(
         422: If validation fails.
     """
     try: 
-        tag_generator = TagGenerator()  
-        suggested_tags = tag_generator.generate_tags(
+        suggested_tags = tag_suggester.generate_tags(
             title=title,
             description=description or "",
-            log=log or ""
+            log=log or "",
         )
         
         return {"suggested_tags": suggested_tags}
@@ -285,7 +310,5 @@ def delete_issue(issue_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail=str(e))
     except (ValidationError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
-
-
 
 

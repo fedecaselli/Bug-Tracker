@@ -33,10 +33,7 @@ from web.api.exceptions import handle_repo_exceptions
 # Initialize the router for issue related endpoints
 router = APIRouter(prefix="/issues", tags=["issues"])
 
-from functools import wraps
-
-
-#CREATE ISSUE
+# Dependency providers for automation strategies
 def get_tag_suggester() -> TagSuggester:
     return default_tag_suggester()
 
@@ -44,14 +41,20 @@ def get_tag_suggester() -> TagSuggester:
 def get_assignee_strategy() -> AssigneeStrategy:
     return default_assignee_strategy()
 
+# Helper to parse comma-separated tag filters
+def _parse_tags_param(tags: Optional[str]) -> Optional[list[str]]:
+    if not tags:
+        return None
+    parsed = [tag.strip() for tag in tags.split(",") if tag.strip()]
+    return parsed or None
 
 @router.post("/", response_model=schemas.IssueOut)
 @handle_repo_exceptions
 def create_issue(
     data: schemas.IssueCreate,
     db: Session = Depends(get_db),
-    tag_suggester: TagSuggester = Depends(get_tag_suggester),
-    assignee_strategy: AssigneeStrategy = Depends(get_assignee_strategy),
+    tag_suggester: TagSuggester = Depends(default_tag_suggester),
+    assignee_strategy: AssigneeStrategy = Depends(default_assignee_strategy),
 ):
     """
     Create a new issue.
@@ -107,9 +110,7 @@ def list_issues(
         409: If the issue already exists.
         422: If validation fails.
     """
-    tag_filter = None
-    if tags:
-        tag_filter = [tag.strip() for tag in tags.split(",") if tag.strip()]
+    tag_filter = _parse_tags_param(tags)
     return repo_issues.list_issues(db, skip=skip, limit=limit, assignee=assignee, priority=priority, status=status, title=title, project_id=project_id, tags=tag_filter,tags_match_all=tags_match_all)
     
 # AUTO-ASSIGN TASK TO ASSIGNEE    
@@ -118,7 +119,7 @@ def list_issues(
 def auto_assign_issue(
     issue_id: int,
     db: Session = Depends(get_db),
-    assignee_strategy: AssigneeStrategy = Depends(get_assignee_strategy),
+    assignee_strategy: AssigneeStrategy = Depends(default_assignee_strategy),
 ):
     """
     Automatically assign an issue to the best available assignee.
@@ -151,7 +152,7 @@ def suggest_tags_api(
     title: str = Query(..., description="Issue title"),
     description: Optional[str] = Query(None, description="Issue description"),
     log: Optional[str] = Query(None, description="Error log"),
-    tag_suggester: TagSuggester = Depends(get_tag_suggester),
+    tag_suggester: TagSuggester = Depends(default_tag_suggester),
 ):
     """
     Generate AI-based tag suggestions for an issue.

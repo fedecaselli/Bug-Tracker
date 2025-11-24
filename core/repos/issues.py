@@ -18,8 +18,6 @@ from .duplicate_checker import check_duplicate_issue
 from core.automation import (
     AssigneeStrategy,
     TagSuggester,
-    default_assignee_strategy,
-    default_tag_suggester,
 )
 from core.validation import (
     normalize_status,
@@ -35,8 +33,8 @@ from sqlalchemy import case
 def create_issue(
     db: Session,
     data: IssueCreate,
-    tag_suggester: TagSuggester | None = None,
-    assignee_strategy: AssigneeStrategy | None = None,
+    tag_suggester: TagSuggester,
+    assignee_strategy: AssigneeStrategy,
 ) -> Issue:
     """
     Create a new issue in the database.
@@ -91,11 +89,7 @@ def create_issue(
     else:
         all_tags = []
         
-    # Auto-generate tags if requestes
-    tag_suggester = tag_suggester or default_tag_suggester()
-    assignee_strategy = assignee_strategy or default_assignee_strategy()
-    
-    # Auto-generate tags if requestes
+    # Auto-generate tags if requested
     if data.auto_generate_tags:
         generated_tags = tag_suggester.generate_tags(
             title=data.title,

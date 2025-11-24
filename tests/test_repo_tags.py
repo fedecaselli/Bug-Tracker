@@ -21,6 +21,7 @@ from core.repos.tags import (
 from core.repos.issues import create_issue
 from core.repos.exceptions import NotFound
 from core.validation import normalize_name
+from core.automation import default_tag_suggester, default_assignee_strategy
 
 def setup_project(db: Session, name: str = "TestProject") -> Project:
     """Helper to create a test project."""
@@ -39,7 +40,12 @@ def create_test_issue(db: Session, project: Project, title: str = "Test Issue") 
         priority="medium",
         status="open"
     )
-    return create_issue(db, issue_data)
+    return create_issue(
+        db,
+        issue_data,
+        tag_suggester=default_tag_suggester(),
+        assignee_strategy=default_assignee_strategy(),
+    )
 
 class TestNormalizeName:
     """Test tag name normalization."""

@@ -21,6 +21,7 @@ import sys
 from pydantic import ValidationError
 from core.schemas import ProjectCreate, ProjectUpdate, IssueCreate, IssueUpdate
 from core.enums import IssuePriority, IssueStatus
+from core.automation import default_tag_suggester, default_assignee_strategy
 from core.repos.exceptions import AlreadyExists, NotFound
 from contextlib import contextmanager
 
@@ -303,6 +304,8 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
                 auto_generate_tags=auto_tags,
                 auto_generate_assignee=auto_assignee,
             ),
+            tag_suggester=default_tag_suggester(),
+            assignee_strategy=default_assignee_strategy(),
         )
         typer.echo(f"Issue {issue.issue_id} successfully created with title '{issue.title}' in project {final_project_id}")
             

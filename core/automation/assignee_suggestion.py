@@ -20,6 +20,9 @@ from core.models import Issue, Tag
 from core.repos.exceptions import NotFound
 from core.automation.stats_provider import AssigneeStatsProvider
 
+WORKLOAD_PENALTY_WEIGHT = 10
+
+
 class AssigneeSuggester:
     """
     Class to handle assignee suggestion logic.
@@ -75,7 +78,7 @@ class AssigneeSuggester:
             # Calculate the average success rate and apply a workload penalty
             avg_success_rate = sum(tag_scores) / len(tag_scores)
             current_workload = workloads.get(assignee, 0)
-            score = avg_success_rate - current_workload * 10 # Penalize for high workload
+            score = avg_success_rate - current_workload * WORKLOAD_PENALTY_WEIGHT
 
             # Update the best assignee if the current one has a higher score
             if score > best_score:

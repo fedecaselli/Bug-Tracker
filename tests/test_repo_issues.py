@@ -13,6 +13,7 @@ from core.repos.issues import (
     list_issues,
 )
 from core.repos.exceptions import NotFound
+from core.automation import default_tag_suggester, default_assignee_strategy
 
 def setup_project(db, name="TestProject"):
     # Helper to create and persist a project for tests
@@ -34,7 +35,7 @@ def test_create_and_get_issue(db):
         priority="low",
         status="open",
         assignee="Alice"
-    ))
+    ), tag_suggester=default_tag_suggester(), assignee_strategy=default_assignee_strategy())
     assert issue.title == "Bug"
     fetched = get_issue(db, issue.issue_id)
     assert fetched.issue_id == issue.issue_id
@@ -51,7 +52,7 @@ def test_create_issue_invalid_project(db):
             priority="low",
             status="open",
             assignee="Alice"
-        ))
+        ), tag_suggester=default_tag_suggester(), assignee_strategy=default_assignee_strategy())
 
 def test_update_issue(db):
     # Test updating an issue's title, status, and priority
@@ -65,7 +66,7 @@ def test_update_issue(db):
         priority="low",
         status="open",
         assignee="Alice"
-    ))
+    ), tag_suggester=default_tag_suggester(), assignee_strategy=default_assignee_strategy())
     # Provide all required fields for IssueUpdate
     updated = update_issue(db, issue.issue_id, IssueUpdate(title="Fixed", status="closed", priority="low"))
     assert updated.title == "Fixed"
@@ -83,7 +84,7 @@ def test_delete_issue(db):
         priority="low",
         status="open",
         assignee="Alice"
-    ))
+    ), tag_suggester=default_tag_suggester(), assignee_strategy=default_assignee_strategy())
     assert delete_issue(db, issue.issue_id) is True
     with pytest.raises(NotFound):
         get_issue(db, issue.issue_id)
@@ -100,7 +101,7 @@ def test_list_issues(db):
         priority="low",
         status="open",
         assignee="Alice"
-    ))
+    ), tag_suggester=default_tag_suggester(), assignee_strategy=default_assignee_strategy())
     create_issue(db, IssueCreate(
         project_id=project.project_id,
         title="Bug2",
@@ -110,7 +111,7 @@ def test_list_issues(db):
         priority="medium",
         status="in_progress",
         assignee="Bob"
-    ))
+    ), tag_suggester=default_tag_suggester(), assignee_strategy=default_assignee_strategy())
     issues = list_issues(db)
     assert len(issues) >= 2
     filtered = list_issues(db, assignee="Alice")

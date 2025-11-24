@@ -11,6 +11,7 @@ This module defines the SQLAlchemy ORM models for:
 from sqlalchemy import Column, Integer, String, CheckConstraint, Text, DateTime, func, ForeignKey, Table, Index
 from sqlalchemy.orm import relationship
 from .db import Base 
+from core.enums import IssuePriority, IssueStatus
 
 # ASSOCIATION TABLES
 
@@ -45,8 +46,8 @@ class Issue(Base):
     description = Column(Text)
     log = Column(Text)
     summary = Column(Text) 
-    priority = Column(String(6), nullable=False, index=True) # low, medium, high
-    status = Column(String(11), nullable=False, default="open", index=True) # open, in_progress, closed
+    priority = Column(String(6), nullable=False, index=True, default=IssuePriority.medium.value)
+    status = Column(String(11), nullable=False, default=IssueStatus.open.value, index=True)
     assignee = Column(String(100), index=True) # Person responsible for resolution
     
     # Automatic timestamps
@@ -62,8 +63,14 @@ class Issue(Base):
         CheckConstraint("assignee IS NULL OR length(assignee) <= 100", name="check_assignee_length"),
         
         # Data integrity Constraints
-        CheckConstraint("priority IN ('low','medium','high')", name="check_issue_priority"),
-        CheckConstraint("status IN ('open','in_progress','closed')", name="check_issue_status"),
+        CheckConstraint(
+            f"priority IN ('{IssuePriority.low.value}','{IssuePriority.medium.value}','{IssuePriority.high.value}')",
+            name="check_issue_priority",
+        ),
+        CheckConstraint(
+            f"status IN ('{IssueStatus.open.value}','{IssueStatus.in_progress.value}','{IssueStatus.closed.value}')",
+            name="check_issue_status",
+        ),
         
         # Composite indexes for common query patterns
         Index('idx_issues_status_priority', 'status', 'priority'),           # AssigneeSuggester queries

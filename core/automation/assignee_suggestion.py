@@ -17,18 +17,19 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from core.models import Issue, Tag
-from core.repos.exceptions import NotFound  
+from core.repos.exceptions import NotFound
+from core.automation.stats_provider import AssigneeStatsProvider
 
 class AssigneeSuggester:
     """
     Class to handle assignee suggestion logic.
     """
     
-    def __init__(self):
+    def __init__(self, stats_provider: AssigneeStatsProvider | None = None):
         """
         Initialize the AssigneeSuggester class.
         """
-        pass
+        self.stats_provider = stats_provider or AssigneeStatsProvider()
     
     def suggest_assignee(self,db:Session, issue_tags:List[str],status:str, priority:str) -> Optional[str]:
         """
@@ -50,24 +51,21 @@ class AssigneeSuggester:
         if not issue_tags:
             return None
         
-        # Retrieve all assignees associated with the issue's tags
-        assignees = self._get_assignees_with_tags(db, issue_tags)
-        
+        tag_stats = self.stats_provider.get_tag_stats(db, issue_tags)
+        workloads = self.stats_provider.get_workloads(db)
+
         best_assignee = None
         best_score = float('-inf')
         
         # Evaluate each assignee
-        for assignee in assignees:
+        for assignee, stats_per_tag in tag_stats.items():
             tag_scores = []
 
             # Calculate success rate for each tag
             for tag in issue_tags:
-                resolved_tag_count = self._count_tags(db,tag,assignee)
-                total_tag_count = self._total_tag_count(db,tag,assignee)
-                
-    
-                if total_tag_count > 0:
-                    success_rate = (resolved_tag_count / total_tag_count) * 100
+                counts = stats_per_tag.get(tag)
+                if counts and counts["total"] > 0:
+                    success_rate = (counts["resolved"] / counts["total"]) * 100
                     tag_scores.append(success_rate)
                     
             # Skip assignees with no relevant tag associations
@@ -76,7 +74,7 @@ class AssigneeSuggester:
             
             # Calculate the average success rate and apply a workload penalty
             avg_success_rate = sum(tag_scores) / len(tag_scores)
-            current_workload = self._count_workload(db, assignee)
+            current_workload = workloads.get(assignee, 0)
             score = avg_success_rate - current_workload * 10 # Penalize for high workload
 
             # Update the best assignee if the current one has a higher score
@@ -128,62 +126,4 @@ class AssigneeSuggester:
             raise NotFound(f"No suitable assignee found for issue {issue_id} with tags {issue_tag_names}, status '{issue.status}', and priority '{issue.priority}'")
 
          
-    
-    def _count_tags(self, db:Session, tag_name:str, assignee: str) -> int:
-        """
-        Count the number of closed issues with a specific tag resolved by an assignee.
-
-        Args:
-            db (Session): Database session.
-            tag_name (str): Name of the tag.
-            assignee (str): Name of the assignee.
-
-        Returns:
-            int: Number of closed issues with the specified tag resolved by the assignee.
-        """
-        return db.query(Issue).join(Issue.tags).filter(and_(Issue.assignee==assignee, Tag.name==tag_name, Issue.status=='closed')).count()
-    
-    def _total_tag_count(self, db:Session, tag_name: str, assignee: str) -> int:
-        """
-        Count the total number of issues with a specific tag assigned to an assignee.
-
-        Args:
-            db (Session): Database session.
-            tag_name (str): Name of the tag.
-            assignee (str): Name of the assignee.
-
-        Returns:
-            int: Total number of issues with the specified tag assigned to the assignee.
-        """
-        return db.query(Issue).join(Issue.tags).filter(and_(Issue.assignee == assignee, Tag.name==tag_name)).count()
-
-    #Count current workload not to overwhelm assignee 
-    def _count_workload(self,db:Session,assignee:str) -> int:
-        """
-        Count the number of open or in-progress issues assigned to an assignee.
-
-        Args:
-            db (Session): Database session.
-            assignee (str): Name of the assignee.
-
-        Returns:
-            int: Number of open or in-progress issues assigned to the assignee.
-        """
-        return db.query(Issue).filter(and_(Issue.assignee==assignee,Issue.status!='closed')).count()
-
-    def _get_assignees_with_tags(self, db:Session, issue_tags: List[str]) -> List[str]:
-        """
-        Retrieve a list of assignees associated with specific tags.
-
-        Args:
-            db (Session): Database session.
-            issue_tags (List[str]): List of tag names.
-
-        Returns:
-            List[str]: List of assignee names associated with the specified tags.
-        """
-        #SQLAlchemy returns a list of tuples, not a list of strings
-        result = db.query(Issue.assignee).join(Issue.tags).filter(and_(Issue.assignee.isnot(None),Tag.name.in_(issue_tags))).distinct().all()
-        return [assignee[0] for assignee in result]
-        
     

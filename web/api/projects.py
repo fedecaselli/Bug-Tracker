@@ -18,6 +18,7 @@ from core.repos import projects as repo_projects
 from core.repos import issues as repo_issues
 from core.repos.exceptions import NotFound, AlreadyExists
 from pydantic import ValidationError
+from web.api.exceptions import handle_repo_exceptions
 
 # Initialize the router for project related endpoints
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 # CREATE PROJECT
 @router.post("/", response_model=schemas.ProjectOut)
+@handle_repo_exceptions
 def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
     """
     Create a new project.
@@ -43,18 +45,12 @@ def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
         409: If a conflict occurs.
         422: If validation fails.
     """
-    try:
-        return repo_projects.create_project(db, data)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except AlreadyExists as e: 
-        raise HTTPException(status_code=409, detail=str(e))
-    except (ValidationError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    return repo_projects.create_project(db, data)
 
 
 # LIST ALL PROJECTS
 @router.get("/", response_model=list[schemas.ProjectOut])
+@handle_repo_exceptions
 def list_projects(db: Session = Depends(get_db)):
     """
     List all projects.
@@ -69,18 +65,12 @@ def list_projects(db: Session = Depends(get_db)):
         409: If a conflict occurs.
         422: If validation fails.
     """
-    try:
-        return repo_projects.list_projects(db)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except AlreadyExists as e: 
-        raise HTTPException(status_code=409, detail=str(e))
-    except (ValidationError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    return repo_projects.list_projects(db)
 
 
 # LIST ISSUES FOR PROJECT 
 @router.get("/{project_id}/issues", response_model=list[schemas.IssueOut])
+@handle_repo_exceptions
 def list_issues_for_project(project_id: int, db: Session = Depends(get_db)):
     """
     List all issues associated with a specific project.
@@ -97,18 +87,12 @@ def list_issues_for_project(project_id: int, db: Session = Depends(get_db)):
         409: If a conflict occurs.
         422: If validation fails.
     """
-    try:
-        return repo_issues.list_issues(db, project_id=project_id)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except AlreadyExists as e: 
-        raise HTTPException(status_code=409, detail=str(e))
-    except (ValidationError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    return repo_issues.list_issues(db, project_id=project_id)
     
     
 
 @router.get("/{project_id}", response_model=schemas.ProjectOut)
+@handle_repo_exceptions
 def get_project(project_id: int, db: Session = Depends(get_db)):
     """
     Retrieve a specific project by its ID.
@@ -125,19 +109,13 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
         409: If a conflict occurs.
         422: If validation fails.
     """
-    try:
-        return repo_projects.get_project(db, project_id)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except AlreadyExists as e: 
-        raise HTTPException(status_code=409, detail=str(e))
-    except (ValidationError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    return repo_projects.get_project(db, project_id)
 
 
 
 # UPDATE PROJECT
 @router.put("/{project_id}", response_model=schemas.ProjectOut)
+@handle_repo_exceptions
 def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = Depends(get_db)):
     """
     Update an existing project.
@@ -155,19 +133,13 @@ def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = D
         409: If a conflict occurs.
         422: If validation fails.
     """
-    try:
-        return repo_projects.update_project(db, project_id, data)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except AlreadyExists as e: 
-        raise HTTPException(status_code=409, detail=str(e))
-    except (ValidationError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    return repo_projects.update_project(db, project_id, data)
 
 
 
 # DELETE PROJECT
 @router.delete("/{project_id}", response_model=bool)
+@handle_repo_exceptions
 def delete_project(project_id: int, db: Session = Depends(get_db)):
     """
     Delete a project by its ID.
@@ -184,15 +156,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
         409: If a conflict occurs.
         422: If validation fails.
     """
-    try:
-        return repo_projects.delete_project(db, project_id)
-    except NotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except AlreadyExists as e: 
-        raise HTTPException(status_code=409, detail=str(e))
-    except (ValidationError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
+    return repo_projects.delete_project(db, project_id)
 
 
 

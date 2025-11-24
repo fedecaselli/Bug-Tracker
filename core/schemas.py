@@ -25,6 +25,7 @@ from core.validation import (
     validate_project_name,
     validate_tag_name,
 )
+from core.enums import IssuePriority, IssueStatus
 
 
 # TAG SCHEMAS
@@ -198,8 +199,8 @@ class IssueBase(BaseModel):
     description: Optional[str] = None
     log: Optional[str] = None
     summary: Optional[str] = None
-    priority: str
-    status: str = "open"
+    priority: IssuePriority | str
+    status: IssueStatus | str = IssueStatus.open.value
     assignee: Optional[str] = None
 
     @field_validator('title', mode='before')
@@ -419,8 +420,8 @@ class IssueOut(BaseModel):
     description: Optional[str] = None
     log: Optional[str] = None
     summary: Optional[str] = None
-    priority: str
-    status: str
+    priority: IssuePriority
+    status: IssueStatus
     assignee: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

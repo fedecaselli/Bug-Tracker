@@ -6,6 +6,7 @@ Each function raises ValueError on invalid input.
 """
 
 import re
+from core.enums import IssuePriority, IssueStatus
 
 def normalize_name(name: str) -> str:
     """
@@ -35,7 +36,7 @@ def validate_priority(priority: str) -> str:
     Raises:
         ValueError: If priority is not one of the allowed values.
     """
-    allowed_priorities = {"low", "medium", "high"}
+    allowed_priorities = {p.value for p in IssuePriority}
     normalized = priority.lower().strip()
     if normalized not in allowed_priorities:
         raise ValueError(f"Priority must be one of: {', '.join(allowed_priorities)}")
@@ -54,7 +55,7 @@ def validate_status(status: str) -> str:
     Raises:
         ValueError: If status is not one of the allowed values.
     """
-    allowed_statuses = {"open", "in_progress", "closed"}
+    allowed_statuses = {s.value for s in IssueStatus}
     normalized = status.lower().strip()
     if normalized not in allowed_statuses:
         raise ValueError(f"Status must be one of: {', '.join(allowed_statuses)}")
@@ -270,4 +271,3 @@ def normalize_tag_names(tag_names: list | None, keep_none: bool = False) -> list
     if tag_names is None:
         return None if keep_none else []
     return validate_tag_names(tag_names)
-

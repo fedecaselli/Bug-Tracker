@@ -20,6 +20,7 @@ from typing import Optional
 import sys
 from pydantic import ValidationError
 from core.schemas import ProjectCreate, ProjectUpdate, IssueCreate, IssueUpdate
+from core.enums import IssuePriority, IssueStatus
 from core.repos.exceptions import AlreadyExists, NotFound
 from contextlib import contextmanager
 
@@ -46,6 +47,7 @@ from core.repos.tags import (
     rename_tags_everywhere as repo_rename_tags_everywhere,
     get_tag_usage_stats as repo_get_tag_usage_stats,
 )
+from cli.services import resolve_project_id, parse_tags_input
 import functools
 
 def handle_cli_exceptions(func):
@@ -155,30 +157,13 @@ def delete_project(
         Project 'Old Project' successfully deleted
     """
 
-    with session_scope() as db: 
-        if project_id is not None and name is not None: 
-            # Both provided - check they match
-            project_name = repo_get_project_by_name(db, name)
-            if project_name.project_id != project_id:
-                typer.echo("Project name and ID do not match. Please provide either name or ID")
-                raise typer.Exit(code=1)
-            # Match - delete by ID
-            repo_delete_project(db,project_id)
-            typer.echo(f"Project '{name}' of ID {project_id} successfully deleted")
-                
-        elif project_id is not None:
-            # Delete by ID only
-            repo_delete_project(db, project_id)
-            typer.echo(f"Project {project_id} successfully deleted")
-        elif name is not None:
-            # Delete by name only: get project by name and delete by ID
-            project = repo_get_project_by_name(db, name)  
-            repo_delete_project(db, project.project_id)
-            typer.echo(f"Project '{name}' successfully deleted")
+    with session_scope() as db:
+        resolved_id = resolve_project_id(db, name=name, project_id=project_id)
+        repo_delete_project(db, resolved_id)
+        if name:
+            typer.echo(f"Project '{name}' of ID {resolved_id} successfully deleted")
         else:
-            # Handle if user does not provide neither ID nor name
-            typer.echo("Provide either --id or --name to delete a project")
-            raise typer.Exit(code=1)
+            typer.echo(f"Project {resolved_id} successfully deleted")
 
         
 
@@ -258,8 +243,8 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
                 description: Optional[str] = typer.Option(None, "--description"),
                 log: Optional[str] = typer.Option(None, "--log", help="Log text, or '-' to read from stdin"),
                 summary: Optional[str] = typer.Option(None, "--summary"),
-                priority: str = typer.Option(...,"--priority", help="low | medium | high"),
-                status: str = typer.Option(..., "--status", help="open | in_progress | closed"),
+    priority: IssuePriority = typer.Option(...,"--priority", help="low | medium | high"),
+    status: IssueStatus = typer.Option(..., "--status", help="open | in_progress | closed"),
                 assignee: Optional[str] = typer.Option(None,"--assignee", help="Person responsible for resolving the issue"),
                 tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated list of tags"),
                 auto_tags: bool = typer.Option(False, "--auto-tags", help="Automatic tag generation"),
@@ -298,61 +283,27 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
             log = sys.stdin.read()
             
         # Parse comma-separated tags into list 
-        tag_names = []
-        if tags:
-            tag_list = tags.split(",")
-            for tag in tag_list:
-                stripped_tag = tag.strip()
-                if stripped_tag:
-                    tag_names.append(stripped_tag)
-                
-        final_project_id = None
-        
-        # Validate either project ID or name are provided (issues belong to projects)
-        if not project_name and not project_id:
-            typer.echo("Error: provide either --project-id or --project-name")
-            raise typer.Exit(code=1)
-        
-        # Handle mismatch if both are provided 
-        if project_name and project_id:
-            # Verify name and ID belong to same project
-            project_by_name = repo_get_project_by_name(db, project_name)
-            if project_by_name.project_id != project_id:
-                typer.echo("Project name and ID do not match. Please provide either name or id.")
-                raise typer.Exit(code=1)
-            final_project_id = project_id
-      
-            
-        # Handle case if only project name is provided 
-        elif project_name:
-            # Get project ID from name
-            project_obj = repo_get_project_by_name(db, project_name)
-            final_project_id = project_obj.project_id
+        tag_names = parse_tags_input(tags) if tags else []
 
-            
-        # Handle case if only project ID is provided
-        elif project_id:
-            # Verify project exists
-            repo_get_project(db,project_id)
-            final_project_id = project_id
-
-        
-        
+        final_project_id = resolve_project_id(db, name=project_name, project_id=project_id)
 
         # Create issue with provided data
-        issue = repo_create_issue(db, IssueCreate(      
-                            project_id=final_project_id,
-                            title=title,
-                            description=description,
-                            log=log,
-                            summary=summary,
-                            priority=priority,
-                            status=status,
-                            assignee=assignee,
-                            tag_names=tag_names,
-                            auto_generate_tags=auto_tags,
-                            auto_generate_assignee=auto_assignee
-                            ), )  
+        issue = repo_create_issue(
+            db,
+            IssueCreate(
+                project_id=final_project_id,
+                title=title,
+                description=description,
+                log=log,
+                summary=summary,
+                priority=priority,
+                status=status,
+                assignee=assignee,
+                tag_names=tag_names,
+                auto_generate_tags=auto_tags,
+                auto_generate_assignee=auto_assignee,
+            ),
+        )
         typer.echo(f"Issue {issue.issue_id} successfully created with title '{issue.title}' in project {final_project_id}")
             
         # Provide information on automatic assignee assignment if selected
@@ -396,8 +347,8 @@ def list_issue(
     limit: int = typer.Option(20, "--limit", help="Max issues to show"),
     skip: int = typer.Option(0, "--skip", help="Skip first N issues"),
     title: Optional[str] = typer.Option(None, "--title", help="Filter by issue name"),
-    priority: Optional[str] = typer.Option(None, "--priority", help="Filter by priority (low | medium | high)"),
-    status: Optional[str] = typer.Option(None, "--status", help="Filter by status (open | in_progress | closed)"),
+    priority: Optional[IssuePriority] = typer.Option(None, "--priority", help="Filter by priority (low | medium | high)"),
+    status: Optional[IssueStatus] = typer.Option(None, "--status", help="Filter by status (open | in_progress | closed)"),
     assignee: Optional[str] = typer.Option(None, "--assignee", help="Filter by assignee"),
     project_id: Optional[int] = typer.Option(None, "--project-id", help="Filter by project id"),
     project_name: Optional[str] = typer.Option(None, "--project-name", help="Filter by project name"),
@@ -431,42 +382,8 @@ def list_issue(
     """
     
     with session_scope() as db: 
-        # Parse comma-separated tags into list 
-        tag_names = []
-        if tags:
-            tag_list = tags.split(",")
-            for tag in tag_list:
-                stripped_tag = tag.strip()
-                if stripped_tag:
-                    tag_names.append(stripped_tag)
-
-        
-        final_project_id = None
-        
-        # Handle mismatch if both are provided 
-        if project_name and project_id:
-            # Verify name and ID belong to same project
-            project_by_name = repo_get_project_by_name(db, project_name)
-            if project_by_name.project_id != project_id:
-                typer.echo("Project name and ID do not match. Please provide either name or id.")
-                raise typer.Exit(code=1)
-            final_project_id = project_id
-
-        # Handle case if only project name is provided 
-        elif project_name:
-            # Get project ID from name
-            project_obj = repo_get_project_by_name(db, project_name)
-            final_project_id = project_obj.project_id
-
-        
-        # Handle case if only project ID is provided
-        elif project_id:
-            # Verify project exists
-            repo_get_project(db,project_id)
-            final_project_id = project_id
-
-        
-        
+        tag_names = parse_tags_input(tags) if tags else []
+        final_project_id = resolve_project_id(db, name=project_name, project_id=project_id) if (project_name or project_id) else None
         # Fetch issues with applied filters
         rows = repo_list_issues(db, 
                                 skip=skip, 
@@ -506,8 +423,8 @@ def update_issue(
     description: Optional[str] = typer.Option(None, "--description"),
     log: Optional[str] = typer.Option(None, "--log", help="Log text, or '-' to read from stdin"),
     summary: Optional[str] = typer.Option(None, "--summary"),
-    priority: Optional[str] = typer.Option(None, "--priority", help="low | medium | high"),
-    status: Optional[str] = typer.Option(None, "--status", help="open | in_progress | closed"),
+    priority: Optional[IssuePriority] = typer.Option(None, "--priority", help="low | medium | high"),
+    status: Optional[IssueStatus] = typer.Option(None, "--status", help="open | in_progress | closed"),
     assignee: Optional[str] = typer.Option(None, "--assignee"),
     tags: Optional[str] = typer.Option(None, "--tags", help="comma-separated list of new tags to replace old ones")):
     """
@@ -557,14 +474,8 @@ def update_issue(
             update_data["status"] = status
         if assignee is not None:
             update_data["assignee"] = assignee
-        if tags is not None: 
-            tag_names = []
-            tag_list = tags.split(",")
-            for tag in tag_list:
-                stripped_tag = tag.strip()
-                if stripped_tag:
-                    tag_names.append(stripped_tag)
-            update_data["tag_names"] = tag_names
+        if tags is not None:
+            update_data["tag_names"] = parse_tags_input(tags)
             
         # Handle if no updates are provided
         if not update_data:
@@ -704,5 +615,3 @@ def list_tags(
             typer.echo("Available Tags:")
             for tag in tags:
                 typer.echo(f"ID: {tag.tag_id}\tName: {tag.name}")
-
-

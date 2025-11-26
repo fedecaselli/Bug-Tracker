@@ -44,7 +44,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run migrations (SQLite test DB)
+      - name: Run migrations (Postgres test DB)
         run: |
           alembic upgrade head
 
@@ -94,6 +94,9 @@ jobs:
           docker tag ${{ secrets.AZURE_REGISTRY_LOGIN_SERVER }}/bugtracker:${{ github.sha }} ${{ secrets.AZURE_REGISTRY_LOGIN_SERVER }}/bugtracker:latest
           docker push ${{ secrets.AZURE_REGISTRY_LOGIN_SERVER }}/bugtracker:latest
 
+      - name: Delete old container (ignore if missing)
+        run: az container delete --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name bugtracker-app --yes || true
+
       - name: Deploy to Azure Container Instances
         run: |
           az container create \
@@ -110,8 +113,7 @@ jobs:
             --memory 1 \
             --dns-name-label bugtracker-app \
             --restart-policy OnFailure \
-            --protocol TCP \
-            --overwrite
+            --protocol TCP 
 
       - name: Verify deployment
         run: |

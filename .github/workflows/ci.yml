@@ -114,7 +114,8 @@ jobs:
             --dns-name-label bugtracker-app \
             --restart-policy OnFailure \
             --protocol TCP \
-            --os-type Linux
+            --os-type Linux \
+            --location northeurope
 
       - name: Verify deployment
         run: |

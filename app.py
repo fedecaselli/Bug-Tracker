@@ -38,6 +38,3 @@ async def tags_page(request: Request):
     return templates.TemplateResponse("tags.html", {"request": request})
 
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
-
-#create database tables
-Base.metadata.create_all(bind=engine)

@@ -113,7 +113,7 @@ jobs:
             --memory 1 \
             --dns-name-label bugtracker-app \
             --restart-policy OnFailure \
-            --protocol TCP 
+            --protocol TCP \
             --os-type Linux
 
       - name: Verify deployment

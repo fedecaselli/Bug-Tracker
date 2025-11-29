@@ -1,8 +1,8 @@
 import pytest
-import requests
 from typer.testing import CliRunner
 
 from cli.main import cli_app
+import cli.client as client_mod
 
 
 runner = CliRunner()
@@ -11,7 +11,7 @@ runner = CliRunner()
 @pytest.fixture
 def api_stub(monkeypatch):
     """
-    Stub cli.main._api_request with a simple dispatcher and capture calls.
+    Stub ApiClient._request with a simple dispatcher and capture calls.
     """
     calls = []
     responses = {}
@@ -28,31 +28,29 @@ def api_stub(monkeypatch):
         # Allow callable for dynamic responses
         return resp(json, params) if callable(resp) else resp
 
-    monkeypatch.setattr("cli.main._api_request", _fake_api)
+    monkeypatch.setattr("cli.main.client._request", _fake_api)
     return register, calls
 
 
 def test_api_request_network_error(monkeypatch):
-    import cli.main as cm
-    class DummyExc(requests.RequestException):
+    class DummyExc(Exception):
         pass
     def boom(*args, **kwargs):
-        raise DummyExc("boom")
-    monkeypatch.setattr("cli.main.requests.request", boom)
+        raise client_mod.requests.RequestException("boom")
+    monkeypatch.setattr("cli.client.requests.request", boom)
     result = runner.invoke(cli_app, ["projects", "list"])
     assert result.exit_code != 0
     assert "Network error" in result.output
 
 
 def test_api_request_http_error_json(monkeypatch):
-    import cli.main as cm
     class Resp:
         status_code = 404
         text = "not found"
         headers = {"content-type": "application/json"}
         def json(self):
             return {"detail": "missing"}
-    monkeypatch.setattr("cli.main.requests.request", lambda *a, **k: Resp())
+    monkeypatch.setattr("cli.client.requests.request", lambda *a, **k: Resp())
     result = runner.invoke(cli_app, ["projects", "list"])
     assert result.exit_code != 0
     assert "API error 404" in result.output
@@ -65,7 +63,7 @@ def test_api_request_http_error_text(monkeypatch):
         headers = {"content-type": "text/plain"}
         def json(self):
             raise ValueError
-    monkeypatch.setattr("cli.main.requests.request", lambda *a, **k: Resp())
+    monkeypatch.setattr("cli.client.requests.request", lambda *a, **k: Resp())
     result = runner.invoke(cli_app, ["projects", "list"])
     assert result.exit_code != 0
     assert "API error 500" in result.output
@@ -78,21 +76,19 @@ def test_api_request_text_response(monkeypatch):
         headers = {"content-type": "text/plain"}
         def json(self):
             return {}
-    monkeypatch.setattr("cli.main.requests.request", lambda *a, **k: Resp())
-    from cli.main import _api_request
-    assert _api_request("get", "/whatever") == "ok"
+    monkeypatch.setattr("cli.client.requests.request", lambda *a, **k: Resp())
+    import cli.main as cm
+    assert cm.client._request("get", "/whatever") == "ok"
 
 
 def test_projects_add_list_delete(api_stub):
     register, calls = api_stub
 
     # Responses for list/create/delete
-    register("get", "/projects", [])
     register("get", "/projects/", [])
     register("get", "/projects/1", {"project_id": 1, "name": "Hello", "created_at": "now"})
     register("post", "/projects/", {"project_id": 1, "name": "Hello"})
     register("delete", "/projects/1", {})
-    register("get", "/projects", [{"project_id": 1, "name": "Hello", "created_at": "now"}])
     register("get", "/projects/", [{"project_id": 1, "name": "Hello", "created_at": "now"}])
 
     # add
@@ -119,7 +115,7 @@ def test_issues_add_list_update_delete(api_stub):
     register, calls = api_stub
 
     # For resolve_project_id we need list_projects/get_project
-    register("get", "/projects", [{"project_id": 1, "name": "Hello"}])
+    register("get", "/projects/", [{"project_id": 1, "name": "Hello"}])
     register("get", "/projects/1", {"project_id": 1, "name": "Hello"})
 
     # Create issue response
@@ -201,7 +197,7 @@ def test_tags_list_stats_rename_cleanup_delete(api_stub):
 
     register(
         "get",
-        "/tags",
+        "/tags/",
         [{"tag_id": 1, "name": "bug"}, {"tag_id": 2, "name": "frontend"}],
     )
     register(
@@ -236,7 +232,7 @@ def test_tags_list_stats_rename_cleanup_delete(api_stub):
     result = runner.invoke(cli_app, ["tags", "delete", "--id", "1"])
     assert result.exit_code == 0
 
-    assert any(c["method"] == "get" and c["path"] == "/tags" for c in calls)
+    assert any(c["method"] == "get" and c["path"] == "/tags/" for c in calls)
     assert any(c["method"] == "delete" and c["path"] == "/tags/1" for c in calls)
 
 
@@ -262,7 +258,6 @@ def test_services_not_found_name():
 
 def test_projects_rm_by_name(api_stub):
     register, calls = api_stub
-    register("get", "/projects", [{"project_id": 2, "name": "Bye", "created_at": "now"}])
     register("get", "/projects/", [{"project_id": 2, "name": "Bye", "created_at": "now"}])
     register("get", "/projects/2", {"project_id": 2, "name": "Bye", "created_at": "now"})
     register("delete", "/projects/2", {})
@@ -281,7 +276,6 @@ def test_projects_rm_missing_args():
 
 def test_projects_rm_mismatch(api_stub):
     register, _calls = api_stub
-    register("get", "/projects", [{"project_id": 3, "name": "Foo"}])
     register("get", "/projects/", [{"project_id": 3, "name": "Foo"}])
     # mismatch: id 3 vs name Bar should trigger ValueError in resolver
     result = runner.invoke(cli_app, ["projects", "rm", "--id", "3", "--name", "Bar"])
@@ -300,7 +294,7 @@ def test_issue_list_no_results(api_stub):
 
 def test_tags_list_no_results(api_stub):
     register, _calls = api_stub
-    register("get", "/tags", [])
+    register("get", "/tags/", [])
 
     result = runner.invoke(cli_app, ["tags", "list"])
     assert result.exit_code == 0

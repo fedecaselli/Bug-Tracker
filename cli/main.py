@@ -9,6 +9,7 @@ import functools
 import sys
 from typing import Optional
 
+import requests
 import typer
 from core.enums import IssuePriority, IssueStatus
 from core.logging import get_logger

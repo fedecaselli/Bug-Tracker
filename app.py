@@ -1,10 +1,12 @@
 import time
+from pathlib import Path
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, REGISTRY, generate_latest
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -16,35 +18,54 @@ from web.api import projects, tags, issues
 configure_logging()
 logger = get_logger(__name__)
 
-app = FastAPI(title = "BugTracker")
+# Base paths
+BASE_DIR = Path(__file__).resolve().parent
 
-# Prometheus metrics
-REQUEST_COUNT = Counter(
+# Prometheus metrics (guard against duplicate registration in tests)
+def _get_or_create_counter(name: str, documentation: str, labelnames: list[str]) -> Counter:
+    existing = REGISTRY._names_to_collectors.get(name)
+    if existing:
+        return existing
+    return Counter(name, documentation, labelnames, registry=REGISTRY)
+
+
+def _get_or_create_histogram(
+    name: str,
+    documentation: str,
+    labelnames: list[str],
+    buckets=(),
+) -> Histogram:
+    existing = REGISTRY._names_to_collectors.get(name)
+    if existing:
+        return existing
+    return Histogram(name, documentation, labelnames, buckets=buckets, registry=REGISTRY)
+
+
+REQUEST_COUNT = _get_or_create_counter(
     "http_requests_total",
     "Total HTTP requests",
     ["method", "path", "status"],
 )
-REQUEST_LATENCY = Histogram(
+REQUEST_LATENCY = _get_or_create_histogram(
     "http_request_duration_seconds",
     "HTTP request latency in seconds",
     ["method", "path"],
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
 )
-REQUEST_ERRORS = Counter(
+REQUEST_ERRORS = _get_or_create_counter(
     "http_requests_error_total",
     "Total HTTP requests that returned errors (status >= 400)",
     ["method", "path", "status"],
 )
 
-
-@app.on_event("startup")
-async def on_startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     logger.info("Application startup")
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
+    yield
     logger.info("Application shutdown")
+
+
+app = FastAPI(title="BugTracker", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -84,7 +105,7 @@ app.include_router(issues.router)
 app.include_router(tags.router)
 
 # Set up templates
-templates = Jinja2Templates(directory="web/templates")
+templates = Jinja2Templates(directory=str(BASE_DIR / "web" / "templates"))
 
 @app.get("/health")
 def health_check():
@@ -100,7 +121,7 @@ def health_check():
 
 @app.get("/metrics")
 def metrics():
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
 
 # Frontend routes
 @app.get("/", response_class=HTMLResponse)
@@ -119,4 +140,4 @@ async def issues_page(request: Request):
 async def tags_page(request: Request):
     return templates.TemplateResponse("tags.html", {"request": request})
 
-app.mount("/static", StaticFiles(directory="web/static"), name="static")
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "web" / "static")), name="static")

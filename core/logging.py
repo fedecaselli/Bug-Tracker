@@ -6,16 +6,24 @@ Use `get_logger(__name__)` in modules instead of bare print/echo for structured 
 """
 
 import logging
+import os
 from typing import Optional
 
 
-def configure_logging(level: int = logging.INFO) -> None:
+def configure_logging(level: Optional[int] = None) -> None:
     """
     Configure a simple console logger if not already configured.
+    Log level can be set via LOG_LEVEL env var (DEBUG/INFO/WARNING/ERROR).
     """
     root = logging.getLogger()
     if root.handlers:
         return
+
+    level_name = os.getenv("LOG_LEVEL", None)
+    if level_name:
+        level = getattr(logging, level_name.upper(), logging.INFO)
+    if level is None:
+        level = logging.INFO
 
     logging.basicConfig(
         level=level,

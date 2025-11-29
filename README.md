@@ -71,6 +71,7 @@ The CLI is published on PyPI and can also be run directly from the repo. Use whi
 Environment for CLI:
 - Set `API_URL` to your target API (default: `http://localhost:8000`; use your deployed host for production).
 - `API_TOKEN` is reserved for future auth and not used currently.
+- Optional: set `LOG_LEVEL` (DEBUG/INFO/WARNING/ERROR) to control CLI logging verbosity; INFO is default.
 
 ### Install from PyPI
 ```bash

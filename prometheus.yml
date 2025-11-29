@@ -7,7 +7,7 @@ scrape_configs:
     static_configs:
       - targets:
           # Use localhost when scraping a locally running app. Replace with ACI FQDN:port when scraping the deployed instance.
-          - localhost:8000
-          # - bugtracker-app.northeurope.azurecontainer.io:8000
+          #- localhost:8000
+          - bugtracker-app.northeurope.azurecontainer.io:8000
         labels:
           service: bugtracker

@@ -253,6 +253,7 @@ The system uses SQLite with the following main entities:
     -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
     prom/prometheus
   ```
+  UI: open `http://localhost:9090` → **Status > Targets** to confirm UP, then **Graph** and query `http_requests_total` or `http_request_duration_seconds_bucket`.
 
 ## Testing
 

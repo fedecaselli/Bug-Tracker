@@ -63,58 +63,78 @@ When the server is running, access the interactive API documentation:
 
 ## Command Line Interface
 
-The CLI provides full functionality for automation and scripting:
+The CLI is published on PyPI and can also be run directly from the repo. Use whichever invocation matches how you installed it:
+
+- Installed from PyPI (or `pip install .`): run commands with `cli ...`
+- Running directly from the repo without installing: use `python -m cli ...`
+
+### Install from PyPI
+```bash
+pip install bug-tracker-cli
+
+# verify installation
+cli --help
+```
+
+Set `API_URL` to point at your deployment when needed (defaults to the hosted demo), and optionally `API_TOKEN` if auth is enabled.
+Changes made via the CLI appear in the web UI after a page refresh.
+
+### Run locally from this repo
+```bash
+# from the project root without installing
+python -m cli --help
+```
 
 ### Project Management
 ```bash
 # Create a project
-python -m cli projects add --name "My Project"
+cli projects add --name "My Project"
 
 # List projects
-python -m cli projects list
+cli projects list
 
 # Update project name
-python -m cli projects update --old-name "Old Name" --new-name "New Name"
+cli projects update --old-name "Old Name" --new-name "New Name"
 
 # Delete a project
-python -m cli projects rm --name "Project Name"
+cli projects rm --name "Project Name"
 ```
 
 ### Issue Management
 ```bash
 # Create an issue
-python -m cli issues add --project-name "My Project" --title "Bug Report" --priority high --status open
+cli issues add --project-name "My Project" --title "Bug Report" --priority high --status open
 
 # Create issue with auto-features
-python -m cli issues add --project-id 1 --title "Feature Request" --priority medium --status open --auto-tags --auto-assignee
+cli issues add --project-id 1 --title "Feature Request" --priority medium --status open --auto-tags --auto-assignee
 
 # List issues with filters
-python -m cli issues list --priority high --status open
-python -m cli issues list --project-name "My Project" --tags "frontend,bug"
+cli issues list --priority high --status open
+cli issues list --project-name "My Project" --tags "frontend,bug"
 
 # Update an issue
-python -m cli issues update --id 42 --status closed --assignee "john_doe"
+cli issues update --id 42 --status closed --assignee "john_doe"
 
 # Delete an issue
-python -m cli issues rm 42
+cli issues rm 42
 ```
 
 ### Tag Management
 ```bash
 # List tags
-python -m cli tags list
+cli tags list
 
 # Show tag usage statistics
-python -m cli tags list --stats
+cli tags list --stats
 
 # Rename a tag globally
-python -m cli tags rename --old-name "frontend" --new-name "ui"
+cli tags rename --old-name "frontend" --new-name "ui"
 
 # Delete a tag
-python -m cli tags delete --id 5
+cli tags delete --id 5
 
 # Clean up unused tags
-python -m cli tags cleanup
+cli tags cleanup
 ```
 
 ## Architecture
@@ -221,6 +241,18 @@ The system uses SQLite with the following main entities:
 - `PATCH /tags/rename` - Rename tag globally
 - `DELETE /tags/cleanup` - Remove unused tags
 - `GET /tags/stats/usage` - Get usage statistics
+
+## Monitoring & Health
+
+- `GET /health` returns basic status with a database connectivity probe.
+- `GET /metrics` exposes Prometheus metrics (request count, latency, errors).
+- Sample Prometheus config: see `prometheus.yml` (update `targets` to your deployed host, e.g. `bugtracker-app.northeurope.azurecontainer.io:8000`).
+- Quick local scrape:
+  ```bash
+  docker run --rm -p 9090:9090 \
+    -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
+    prom/prometheus
+  ```
 
 ## Testing
 

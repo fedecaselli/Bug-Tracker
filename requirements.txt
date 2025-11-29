@@ -41,3 +41,4 @@ pytest-cov==7.0.0
 alembic==1.13.3
 psycopg2-binary==2.9.9
 requests==2.32.3
+prometheus_client==0.21.0

@@ -1,574 +1,391 @@
 import pytest
-from unittest.mock import patch
+import requests
 from typer.testing import CliRunner
+
 from cli.main import cli_app
+
 
 runner = CliRunner()
 
-def get_project_id_from_output(output):
-    # Extract project_id from CLI output like: "Project TestProject successfully created with id: 5"
-    for line in output.splitlines():
-        if "successfully created" in line and "id:" in line:
-            parts = line.split("id:")
-            if len(parts) > 1:
-                return parts[1].strip().split()[0]
-    return None
 
-def get_issue_id_from_output(output):
-    # Extract issue_id from CLI output like: "Issue 1 successfully created with title ..."
-    for line in output.splitlines():
-        if line.startswith("Issue") and "successfully created" in line:
-            parts = line.split()
-            for i, part in enumerate(parts):
-                if part == "Issue" and i+1 < len(parts):
-                    return parts[i+1]
-    return None
+@pytest.fixture
+def api_stub(monkeypatch):
+    """
+    Stub cli.main._api_request with a simple dispatcher and capture calls.
+    """
+    calls = []
+    responses = {}
 
-class TestProjectCLI:
-    """Test CLI project commands"""
+    def register(method, path, response):
+        responses[(method, path)] = response
 
-    def test_add_project_success(self, db):
-        # Test adding a project with a valid name (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            assert result.exit_code == 0
-            assert "successfully created" in result.output
+    def _fake_api(method, path, params=None, json=None):
+        calls.append({"method": method, "path": path, "params": params, "json": json})
+        key = (method, path)
+        if key not in responses:
+            raise AssertionError(f"Unexpected API call: {method} {path}")
+        resp = responses[key]
+        # Allow callable for dynamic responses
+        return resp(json, params) if callable(resp) else resp
 
-    def test_add_project_duplicate(self, db):
-        # Test adding a project with a duplicate name (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            assert result.exit_code in (1, 2)
-            assert "Error:" in result.output or "already exists" in result.output
+    monkeypatch.setattr("cli.main._api_request", _fake_api)
+    return register, calls
 
-    def test_add_project_empty_name(self, db):
-        # Test adding a project with an empty name (should fail validation)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", ""])
-            assert result.exit_code in (1, 2)
 
-    def test_add_project_long_name(self, db):
-        # Test adding a project with a name longer than allowed (should fail validation)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            long_name = "a" * 201
-            result = runner.invoke(cli_app, ["projects", "add", "--name", long_name])
-            assert result.exit_code in (1, 2)
+def test_api_request_network_error(monkeypatch):
+    import cli.main as cm
+    class DummyExc(requests.RequestException):
+        pass
+    def boom(*args, **kwargs):
+        raise DummyExc("boom")
+    monkeypatch.setattr("cli.main.requests.request", boom)
+    result = runner.invoke(cli_app, ["projects", "list"])
+    assert result.exit_code != 0
+    assert "Network error" in result.output
 
-    def test_add_project_whitespace_name(self, db):
-        # Test adding a project with only whitespace in the name (should fail validation)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "   "])
-            assert result.exit_code in (1, 2)
 
-    def test_remove_project_by_id(self, db):
-        # Test removing a project by its ID (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, ["projects", "rm", "--id", str(project_id)])
-            assert result.exit_code == 0
-            assert "successfully deleted" in result.output
+def test_api_request_http_error_json(monkeypatch):
+    import cli.main as cm
+    class Resp:
+        status_code = 404
+        text = "not found"
+        headers = {"content-type": "application/json"}
+        def json(self):
+            return {"detail": "missing"}
+    monkeypatch.setattr("cli.main.requests.request", lambda *a, **k: Resp())
+    result = runner.invoke(cli_app, ["projects", "list"])
+    assert result.exit_code != 0
+    assert "API error 404" in result.output
 
-    def test_remove_project_by_name(self, db):
-        # Test removing a project by its name (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            result = runner.invoke(cli_app, ["projects", "rm", "--name", "TestProject"])
-            assert result.exit_code == 0
-            assert "successfully deleted" in result.output
 
-    def test_remove_project_no_args(self, db):
-        # Test removing a project with no arguments (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "rm"])
-            assert result.exit_code in (1, 2)
-            assert "Provide either --id or --name" in result.output
+def test_api_request_http_error_text(monkeypatch):
+    class Resp:
+        status_code = 500
+        text = "fail"
+        headers = {"content-type": "text/plain"}
+        def json(self):
+            raise ValueError
+    monkeypatch.setattr("cli.main.requests.request", lambda *a, **k: Resp())
+    result = runner.invoke(cli_app, ["projects", "list"])
+    assert result.exit_code != 0
+    assert "API error 500" in result.output
 
-    def test_remove_project_not_found(self, db):
-        # Test removing a non-existent project (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "rm", "--id", "999"])
-            assert result.exit_code in (1, 2)
-            assert "not found" in result.output
 
-    def test_update_project_success(self, db):
-        # Test updating a project's name (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["projects", "add", "--name", "OldName"])
-            result = runner.invoke(cli_app, ["projects", "update", "--old-name", "OldName", "--new-name", "NewName"])
-            assert result.exit_code == 0
-            assert "Updated project" in result.output
+def test_api_request_text_response(monkeypatch):
+    class Resp:
+        status_code = 200
+        text = "ok"
+        headers = {"content-type": "text/plain"}
+        def json(self):
+            return {}
+    monkeypatch.setattr("cli.main.requests.request", lambda *a, **k: Resp())
+    from cli.main import _api_request
+    assert _api_request("get", "/whatever") == "ok"
 
-    def test_update_project_not_found(self, db):
-        # Test updating a non-existent project (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "update", "--old-name", "NonExistent", "--new-name", "NewName"])
-            assert result.exit_code in (1, 2)
-            assert "Error:" in result.output or "not found" in result.output
 
-    def test_update_project_duplicate_name(self, db):
-        # Test updating a project to a name that already exists (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["projects", "add", "--name", "Project1"])
-            runner.invoke(cli_app, ["projects", "add", "--name", "Project2"])
-            result = runner.invoke(cli_app, ["projects", "update", "--old-name", "Project1", "--new-name", "Project2"])
-            assert result.exit_code in (1, 2)
-            assert "already uses the name" in result.output or "Error:" in result.output
+def test_projects_add_list_delete(api_stub):
+    register, calls = api_stub
 
-    def test_list_projects_empty(self, db):
-        # Test listing projects when none exist (should show "No projects")
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "list"])
-            assert result.exit_code == 0
-            assert "No projects" in result.output
+    # Responses for list/create/delete
+    register("get", "/projects", [])
+    register("get", "/projects/", [])
+    register("get", "/projects/1", {"project_id": 1, "name": "Hello", "created_at": "now"})
+    register("post", "/projects/", {"project_id": 1, "name": "Hello"})
+    register("delete", "/projects/1", {})
+    register("get", "/projects", [{"project_id": 1, "name": "Hello", "created_at": "now"}])
+    register("get", "/projects/", [{"project_id": 1, "name": "Hello", "created_at": "now"}])
 
-    def test_list_projects_multiple(self, db):
-        # Test listing multiple projects (should show all created projects)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            for i in range(3):
-                runner.invoke(cli_app, ["projects", "add", "--name", f"Project{i}"])
-            result = runner.invoke(cli_app, ["projects", "list"])
-            assert result.exit_code == 0
-            for i in range(3):
-                assert f"Project{i}" in result.output
+    # add
+    result = runner.invoke(cli_app, ["projects", "add", "--name", "Hello"])
+    assert result.exit_code == 0
+    assert "successfully created" in result.output
 
-class TestIssueCLI:
-    """Test CLI issue commands"""
+    # list
+    result = runner.invoke(cli_app, ["projects", "list"])
+    assert result.exit_code == 0
+    assert "Hello" in result.output
 
-    def test_create_issue_success(self, db):
-        # Test creating an issue with valid data (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "Test Issue",
-                "--priority", "high",
-                "--status", "open"
-            ])
-            assert result.exit_code == 0
-            assert "successfully created" in result.output
+    # delete
+    result = runner.invoke(cli_app, ["projects", "rm", "--id", "1"])
+    assert result.exit_code == 0
+    assert "successfully deleted" in result.output
 
-    def test_create_issue_missing_required(self, db):
-        # Test creating an issue with missing required arguments (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["issues", "add"])
-            assert result.exit_code != 0
+    # Ensure calls were made
+    assert any(c["method"] == "post" and c["path"] == "/projects/" for c in calls)
+    assert any(c["method"] == "delete" and c["path"] == "/projects/1" for c in calls)
 
-    def test_create_issue_invalid_priority(self, db):
-        # Test creating an issue with an invalid priority (should fail validation)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "Test Issue",
-                "--priority", "invalid",
-                "--status", "open"
-            ])
-            assert result.exit_code in (1, 2)
 
-    def test_create_issue_invalid_status(self, db):
-        # Test creating an issue with an invalid status (should fail validation)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "Test Issue",
-                "--priority", "high",
-                "--status", "invalid"
-            ])
-            assert result.exit_code in (1, 2)
+def test_issues_add_list_update_delete(api_stub):
+    register, calls = api_stub
 
-    def test_create_issue_empty_title(self, db):
-        # Test creating an issue with an empty title (should fail validation)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "",
-                "--priority", "high",
-                "--status", "open"
-            ])
-            assert result.exit_code in (1, 2)
+    # For resolve_project_id we need list_projects/get_project
+    register("get", "/projects", [{"project_id": 1, "name": "Hello"}])
+    register("get", "/projects/1", {"project_id": 1, "name": "Hello"})
 
-    def test_create_issue_long_title(self, db):
-        # Test creating an issue with a title longer than allowed (should fail validation)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            long_title = "a" * 101
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", long_title,
-                "--priority", "high",
-                "--status", "open"
-            ])
-            assert result.exit_code in (1, 2)
+    # Create issue response
+    register(
+        "post",
+        "/issues/",
+        {"issue_id": 5, "title": "Bug", "project_id": 1, "assignee": None},
+    )
 
-    def test_create_issue_invalid_project(self, db):
-        # Test creating an issue with a non-existent project (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", "999",
-                "--title", "Test Issue",
-                "--priority", "high",
-                "--status", "open"
-            ])
-            assert result.exit_code in (1, 2)
-            assert "not found" in result.output or "Error:" in result.output or "Usage:" in result.output
+    # List issues response
+    register(
+        "get",
+        "/issues/",
+        [
+            {
+                "issue_id": 5,
+                "title": "Bug",
+                "description": None,
+                "log": None,
+                "summary": None,
+                "priority": "high",
+                "status": "open",
+                "assignee": None,
+                "tags": [{"name": "bug"}],
+                "project_id": 1,
+            }
+        ],
+    )
 
-    def test_create_issue_with_stdin_log(self, db):
-        # Test creating an issue with log input from stdin (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            with patch('sys.stdin.read', return_value="Log from stdin"):
-                result = runner.invoke(cli_app, [
-                    "issues", "add",
-                    "--project-id", str(project_id),
-                    "--title", "Test Issue",
-                    "--priority", "high",
-                    "--status", "open",
-                    "--log", "-"
-                ])
-                assert result.exit_code == 0
-                assert "successfully created" in result.output
+    # Update issue response
+    register("put", "/issues/5", {})
+    # Delete issue response
+    register("delete", "/issues/5", {})
 
-    def test_delete_issue_success(self, db):
-        # Test deleting an issue by its ID (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "Test Issue",
-                "--priority", "high",
-                "--status", "open"
-            ])
-            issue_id = get_issue_id_from_output(result.output)
-            if not issue_id:
-                list_result = runner.invoke(cli_app, ["issues", "list", "--title", "Test Issue"])
-                issue_id = get_issue_id_from_output(list_result.output)
-            assert issue_id is not None
-            result = runner.invoke(cli_app, ["issues", "rm", str(issue_id)])
-            assert result.exit_code == 0
-            assert "Successfully deleted" in result.output
+    # add
+    result = runner.invoke(
+        cli_app,
+        [
+            "issues",
+            "add",
+            "--project-name",
+            "Hello",
+            "--title",
+            "Bug",
+            "--priority",
+            "high",
+            "--status",
+            "open",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "successfully created" in result.output
 
-    def test_delete_issue_not_found(self, db):
-        # Test deleting a non-existent issue (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["issues", "rm", "999"])
-            assert result.exit_code in (1, 2)
-            assert "not found" in result.output or "Error:" in result.output
+    # list
+    result = runner.invoke(cli_app, ["issues", "list", "--project-name", "Hello"])
+    assert result.exit_code == 0
+    assert "Bug" in result.output
 
-    def test_update_issue_success(self, db):
-        # Test updating an issue with valid data (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "Original",
-                "--priority", "low",
-                "--status", "open"
-            ])
-            issue_id = get_issue_id_from_output(result.output)
-            if not issue_id:
-                list_result = runner.invoke(cli_app, ["issues", "list", "--title", "Original"])
-                issue_id = get_issue_id_from_output(list_result.output)
-            assert issue_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "update",
-                "--id", str(issue_id),
-                "--title", "Updated",
-                "--priority", "medium",
-                "--status", "closed"
-            ])
-            assert result.exit_code == 0
-            assert "updated" in result.output
+    # update
+    result = runner.invoke(
+        cli_app,
+        ["issues", "update", "--id", "5", "--status", "closed"],
+    )
+    assert result.exit_code == 0
+    assert "updated" in result.output
 
-    def test_update_issue_no_fields(self, db):
-        # Test updating an issue with no fields provided (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["issues", "update", "--id", "1"])
-            assert result.exit_code in (1, 2)
-            assert "No fields provided to update" in result.output
+    # delete
+    result = runner.invoke(cli_app, ["issues", "rm", "5"])
+    assert result.exit_code == 0
+    assert "Successfully deleted" in result.output
 
-    def test_update_issue_not_found(self, db):
-        # Test updating a non-existent issue (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, [
-                "issues", "update",
-                "--id", "999",
-                "--title", "Updated"
-            ])
-            assert result.exit_code in (1, 2)
-            assert "not found" in result.output or "Error:" in result.output
+    assert any(c["method"] == "post" and c["path"] == "/issues/" for c in calls)
+    assert any(c["method"] == "put" and c["path"] == "/issues/5" for c in calls)
+    assert any(c["method"] == "delete" and c["path"] == "/issues/5" for c in calls)
 
-    def test_update_issue_with_stdin_log(self, db):
-        # Test updating an issue with log input from stdin (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "Test",
-                "--priority", "low",
-                "--status", "open"
-            ])
-            issue_id = get_issue_id_from_output(result.output)
-            if not issue_id:
-                list_result = runner.invoke(cli_app, ["issues", "list", "--title", "Test"])
-                issue_id = get_issue_id_from_output(list_result.output)
-            assert issue_id is not None
-            with patch('sys.stdin.read', return_value="Updated log from stdin"):
-                result = runner.invoke(cli_app, [
-                    "issues", "update",
-                    "--id", str(issue_id),
-                    "--priority", "medium",
-                    "--status", "open",
-                    "--log", "-"
-                ])
-                assert result.exit_code == 0
-                assert "updated" in result.output
 
-    def test_list_issues_empty(self, db):
-        # Test listing issues when none exist (should show "No registered issues")
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["issues", "list"])
-            assert result.exit_code == 0
-            assert "No registered issues" in result.output
+def test_tags_list_stats_rename_cleanup_delete(api_stub):
+    register, calls = api_stub
 
-    def test_list_issues_with_filters(self, db):
-        # Test listing issues with filters (should return only matching issues)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "TestProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            for i, priority in enumerate(["low", "medium", "high"]):
-                runner.invoke(cli_app, [
-                    "issues", "add",
-                    "--project-id", str(project_id),
-                    "--title", f"Issue {i}",
-                    "--priority", priority,
-                    "--status", "open"
-                ])
-            result = runner.invoke(cli_app, ["issues", "list", "--priority", "high"])
-            assert result.exit_code == 0
-            assert "Issue" in result.output or "No registered issues" in result.output
+    register(
+        "get",
+        "/tags",
+        [{"tag_id": 1, "name": "bug"}, {"tag_id": 2, "name": "frontend"}],
+    )
+    register(
+        "get",
+        "/tags/stats/usage",
+        [{"name": "bug", "issue_count": 3}],
+    )
+    register("patch", "/tags/rename", {})
+    register("delete", "/tags/cleanup", {"count": 2})
+    register("delete", "/tags/1", {})
 
-    def test_create_issue_with_auto_tags(self, db):
-        # Test creating an issue with auto-tagging enabled (should mention tags in output)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "AutoTagProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "Crash on login page",
-                "--priority", "high",
-                "--status", "open",
-                "--auto-tags"
-            ])
-            assert result.exit_code == 0
-            assert "successfully created" in result.output
+    # list
+    result = runner.invoke(cli_app, ["tags", "list"])
+    assert result.exit_code == 0
+    assert "bug" in result.output
 
-    def test_create_issue_with_auto_assignee(self, db):
-        # Test creating an issue with auto-assignment enabled (should mention assignee in output)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["projects", "add", "--name", "AutoAssignProject"])
-            project_id = get_project_id_from_output(result.output)
-            assert project_id is not None
-            result = runner.invoke(cli_app, [
-                "issues", "add",
-                "--project-id", str(project_id),
-                "--title", "Database error on save",
-                "--priority", "high",
-                "--status", "open",
-                "--auto-assignee"
-            ])
-            assert result.exit_code == 0
-            assert "successfully created" in result.output
-            assert "auto-assigned" in result.output.lower() or "assignee" in result.output.lower() or "auto" in result.output.lower()    
+    # stats
+    result = runner.invoke(cli_app, ["tags", "list", "--stats"])
+    assert result.exit_code == 0
+    assert "Tag Usage Statistics" in result.output
 
-    def test_invalid_command(self, db):
-        # Test running an invalid CLI command (should fail)
-        result = runner.invoke(cli_app, ["invalid-command"])
-        assert result.exit_code != 0
+    # rename
+    result = runner.invoke(cli_app, ["tags", "rename", "--old-name", "bug", "--new-name", "ui"])
+    assert result.exit_code == 0
 
-    def test_missing_required_args(self, db):
-        # Test running CLI commands with missing required arguments (should fail)
-        result = runner.invoke(cli_app, ["projects", "add"])
-        assert result.exit_code != 0
-        result = runner.invoke(cli_app, ["issues", "add"])
-        assert result.exit_code != 0
+    # cleanup
+    result = runner.invoke(cli_app, ["tags", "cleanup"])
+    assert result.exit_code == 0
+    assert "Cleaned up" in result.output
 
-class TestTagCLI:
-    """Test CLI tag commands"""
+    # delete
+    result = runner.invoke(cli_app, ["tags", "delete", "--id", "1"])
+    assert result.exit_code == 0
 
-    def test_add_tag_success(self, db):
-        # Test adding a tag with a valid name (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["tags", "add", "--name", "bug"])
-            assert result.exit_code in (0, 2)
-            assert "successfully created" in result.output or "Usage:" in result.output
+    assert any(c["method"] == "get" and c["path"] == "/tags" for c in calls)
+    assert any(c["method"] == "delete" and c["path"] == "/tags/1" for c in calls)
 
-    def test_add_tag_duplicate(self, db):
-        # Test adding a tag with a duplicate name (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["tags", "add", "--name", "bug"])
-            result = runner.invoke(cli_app, ["tags", "add", "--name", "bug"])
-            assert result.exit_code in (1, 2)
-            assert "already exists" in result.output or "Error:" in result.output or "Usage:" in result.output
 
-    def test_delete_tag_success(self, db):
-        # Test deleting a tag by its name (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["tags", "add", "--name", "bug"])
-            result = runner.invoke(cli_app, ["tags", "delete", "--name", "bug"])
-            assert result.exit_code in (0, 1, 2)
-            assert "deleted" in result.output or "not found" in result.output or "Error:" in result.output or "Usage:" in result.output
+def test_issue_update_no_fields():
+    result = runner.invoke(cli_app, ["issues", "update", "--id", "5"])
+    assert result.exit_code != 0
+    assert "No fields provided to update" in result.output
 
-    def test_delete_tag_not_found(self, db):
-        # Test deleting a non-existent tag by ID (should fail)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            result = runner.invoke(cli_app, ["tags", "delete", "--id", "999"])
-            assert result.exit_code in (1, 2)
-            assert "not found" in result.output or "Error:" in result.output or "Usage:" in result.output
 
-    def test_rename_tag_success(self, db):
-        # Test renaming a tag (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["tags", "add", "--name", "bug"])
-            result = runner.invoke(cli_app, ["tags", "rename", "--old-name", "bug", "--new-name", "defect"])
-            assert result.exit_code in (0, 1, 2)
-            assert "renamed" in result.output or "not found" in result.output or "Error:" in result.output or "Usage:" in result.output
+def test_services_missing_args():
+    from cli import services
+    with pytest.raises(ValueError):
+        services.resolve_project_id(lambda: [], lambda _id: None)
 
-    def test_list_tags_multiple(self, db):
-        # Test listing multiple tags (should show all created tags)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["tags", "add", "--name", "bug"])
-            runner.invoke(cli_app, ["tags", "add", "--name", "feature"])
-            result = runner.invoke(cli_app, ["tags", "list"])
-            assert result.exit_code == 0
-            assert "bug" in result.output or "feature" in result.output or "No tags found" in result.output
 
-    def test_remove_tags_with_no_issue(self, db):
-        # Test cleaning up unused tags (should succeed)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["tags", "add", "--name", "unused"])
-            result = runner.invoke(cli_app, ["tags", "cleanup"])
-            assert result.exit_code == 0 or result.exit_code == 2
-            assert "Cleaned up" in result.output or "No tags found" in result.output or "Usage:" in result.output
+def test_services_not_found_name():
+    from cli import services
+    def list_fn():
+        return [{"project_id": 1, "name": "A"}]
+    with pytest.raises(ValueError):
+        services.resolve_project_id(list_fn, lambda _id: None, name="B")
 
-    def test_tag_usage_stats(self, db):
-        # Test showing tag usage statistics (should show stats for tags)
-        with patch('cli.main.session_scope') as mock_session:
-            mock_session.return_value.__enter__.return_value = db
-            mock_session.return_value.__exit__.return_value = None
-            runner.invoke(cli_app, ["tags", "add", "--name", "bug"])
-            result = runner.invoke(cli_app, ["tags", "list", "--stats"])
-            assert result.exit_code == 0 or result.exit_code == 2
-            assert "bug" in result.output or "Tag Usage Statistics:" in result.output or "No tags found" in result.output or "Usage:" in result.output
+
+def test_projects_rm_by_name(api_stub):
+    register, calls = api_stub
+    register("get", "/projects", [{"project_id": 2, "name": "Bye", "created_at": "now"}])
+    register("get", "/projects/", [{"project_id": 2, "name": "Bye", "created_at": "now"}])
+    register("get", "/projects/2", {"project_id": 2, "name": "Bye", "created_at": "now"})
+    register("delete", "/projects/2", {})
+
+    result = runner.invoke(cli_app, ["projects", "rm", "--name", "Bye"])
+    assert result.exit_code == 0
+    assert "successfully deleted" in result.output
+    assert any(c["method"] == "delete" and c["path"] == "/projects/2" for c in calls)
+
+
+def test_projects_rm_missing_args():
+    result = runner.invoke(cli_app, ["projects", "rm"])
+    assert result.exit_code != 0
+    assert "Provide either --id or --name" in result.output
+
+
+def test_projects_rm_mismatch(api_stub):
+    register, _calls = api_stub
+    register("get", "/projects", [{"project_id": 3, "name": "Foo"}])
+    register("get", "/projects/", [{"project_id": 3, "name": "Foo"}])
+    # mismatch: id 3 vs name Bar should trigger ValueError in resolver
+    result = runner.invoke(cli_app, ["projects", "rm", "--id", "3", "--name", "Bar"])
+    assert result.exit_code != 0
+    assert "not found" in result.output or "do not match" in result.output
+
+
+def test_issue_list_no_results(api_stub):
+    register, _calls = api_stub
+    register("get", "/issues/", [])
+
+    result = runner.invoke(cli_app, ["issues", "list"])
+    assert result.exit_code == 0
+    assert "No registered issues" in result.output
+
+
+def test_tags_list_no_results(api_stub):
+    register, _calls = api_stub
+    register("get", "/tags", [])
+
+    result = runner.invoke(cli_app, ["tags", "list"])
+    assert result.exit_code == 0
+    assert "No tags found" in result.output
+
+
+def test_projects_list_empty(api_stub):
+    register, _calls = api_stub
+    register("get", "/projects/", [])
+    result = runner.invoke(cli_app, ["projects", "list"])
+    assert result.exit_code == 0
+    assert "No projects" in result.output
+
+
+def test_issue_add_with_tags_and_project_id(api_stub):
+    register, calls = api_stub
+    register("get", "/projects/10", {"project_id": 10, "name": "X"})
+    register(
+        "post",
+        "/issues/",
+        {"issue_id": 11, "title": "Crash", "project_id": 10, "assignee": None},
+    )
+
+    result = runner.invoke(
+        cli_app,
+        [
+            "issues",
+            "add",
+            "--project-id",
+            "10",
+            "--title",
+            "Crash",
+            "--priority",
+            "high",
+            "--status",
+            "open",
+            "--tags",
+            "bug,frontend",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "successfully created" in result.output
+    assert any(c["method"] == "post" and c["path"] == "/issues/" for c in calls)
+
+
+def test_issue_list_cache_hits(api_stub):
+    register, calls = api_stub
+    register(
+        "get",
+        "/issues/",
+        [
+            {
+                "issue_id": 1,
+                "title": "One",
+                "priority": "low",
+                "status": "open",
+                "assignee": None,
+                "tags": [],
+                "project_id": 123,
+            },
+            {
+                "issue_id": 2,
+                "title": "Two",
+                "priority": "medium",
+                "status": "open",
+                "assignee": None,
+                "tags": [],
+                "project_id": 123,
+            },
+        ],
+    )
+    register("get", "/projects/123", {"project_id": 123, "name": "Proj"})
+
+    result = runner.invoke(cli_app, ["issues", "list"])
+    assert result.exit_code == 0
+    assert "Proj" in result.output
+
+
+def test_issue_update_log_stdin(monkeypatch, api_stub):
+    register, _calls = api_stub
+    register("put", "/issues/9", {})
+    monkeypatch.setattr("sys.stdin.read", lambda: "from stdin")
+    result = runner.invoke(
+        cli_app,
+        ["issues", "update", "--id", "9", "--log", "-", "--status", "closed"],
+    )
+    assert result.exit_code == 0
+    assert "updated" in result.output

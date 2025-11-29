@@ -1,103 +1,79 @@
 """
 CLI
 
-This module provides a command-line interface (CLI) for managing projects, issues, and tags in the Bug Tracker application. 
-It allows users to perform operations such as creating, updating, deleting, and listing projects, issues, and tags. 
-The CLI also supports advanced features like automatic tag generation and assignee suggestion.
-
-Usage:
-    python -m cli [projects|issues|tags] <command> [options]
-
-Subcommands:
-    projects: add, rm, list, update
-    issues:   add, rm, list, update
-    tags:     rename, delete, cleanup, list
+This module provides a command-line interface (CLI) for managing projects, issues, and tags in the Bug Tracker application via the HTTP API.
+It keeps the same UX as the previous database-backed CLI but now calls the deployed FastAPI endpoints.
 """
 
-from core.db import SessionLocal
-import typer
-from typing import Optional
-import sys
-from pydantic import ValidationError
-from core.schemas import ProjectCreate, ProjectUpdate, IssueCreate, IssueUpdate
-from core.enums import IssuePriority, IssueStatus
-from core.automation import default_tag_suggester, default_assignee_strategy
-from core.repos.exceptions import AlreadyExists, NotFound
-from contextlib import contextmanager
-
-# Repository layer imports
-from core.repos.projects import (
-    create_project as repo_create_project,
-    delete_project as repo_delete_project,
-    update_project as repo_update_project,
-    get_project as repo_get_project,
-    get_project_by_name as repo_get_project_by_name,
-    list_projects as repo_list_projects,
-)
-from core.repos.issues import (
-    create_issue as repo_create_issue,
-    delete_issue as repo_delete_issue,
-    update_issue as repo_update_issue,
-    list_issues as repo_list_issues,
-)
-
-from core.repos.tags import (
-    list_tags as repo_list_tags,
-    delete_tag as repo_delete_tag,
-    remove_tags_with_no_issue as repo_remove_tags_with_no_issue,
-    rename_tags_everywhere as repo_rename_tags_everywhere,
-    get_tag_usage_stats as repo_get_tag_usage_stats,
-)
-from cli.services import resolve_project_id, parse_tags_input
 import functools
+import os
+import sys
+from typing import Optional
+
+import requests
+import typer
+from core.enums import IssuePriority, IssueStatus
+from pydantic import ValidationError
+
+from cli.services import parse_tags_input, resolve_project_id
+
+API_URL = os.getenv("API_URL", "http://bugtracker-app.northeurope.azurecontainer.io:8000")
+API_TOKEN = os.getenv("API_TOKEN") # for authentication if added (if there is enough time)
+
+
+def _api_request(method: str, path: str, *, params=None, json=None):
+    """
+    Minimal HTTP helper that wraps requests and surfaces friendly errors.
+    """
+    url = f"{API_URL}{path}"
+    headers = {"Accept": "application/json"}
+    if API_TOKEN:
+        headers["Authorization"] = f"Bearer {API_TOKEN}"
+    try:
+        resp = requests.request(method, url, params=params, json=json, headers=headers, timeout=15)
+    except requests.RequestException as exc:
+        typer.echo(f"Network error calling {url}: {exc}")
+        raise typer.Exit(code=1)
+
+    if resp.status_code >= 400:
+        detail = resp.text
+        try:
+            detail_json = resp.json()
+            detail = detail_json.get("detail", detail)
+        except ValueError:
+            pass
+        typer.echo(f"API error {resp.status_code}: {detail}")
+        raise typer.Exit(code=1)
+
+    if resp.headers.get("content-type", "").startswith("application/json"):
+        return resp.json()
+    return resp.text
+
+
+def _list_projects() -> list[dict]:
+    return _api_request("get", "/projects")
+
+
+def _get_project(project_id: int) -> dict:
+    return _api_request("get", f"/projects/{project_id}")
 
 def handle_cli_exceptions(func):
     """
     Decorator for CLI commands to handle common exceptions.
-
-    Catches NotFound, AlreadyExists, ValidationError, and ValueError exceptions,
-    prints a user-friendly error message, and exits the CLI with code 1.
-
-    Args:
-        func (Callable): The CLI command function to wrap.
-
-    Returns:
-        Callable: The wrapped function that raises `typer.Exit` on error.
     """
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except NotFound as e:
-            typer.echo(f"Error: {e}")
-            raise typer.Exit(code=1)
-        except AlreadyExists as e:
-            typer.echo(f"Error: {e}")
-            raise typer.Exit(code=1)
         except ValidationError as e:
             typer.echo(f"Validation Error: {e}")
             raise typer.Exit(code=1)
         except ValueError as e:
             typer.echo(f"Error: {e}")
             raise typer.Exit(code=1)
+
     return wrapper
-
-@contextmanager
-def session_scope():
-    """
-    Provide a SQLAlchemy session with automatic cleanup.
-
-    Opens a session and yields it to the caller. The session is always closed when the context exits, regardless 
-    of success or failure.
-
-    Yields:
-        Session: An active SQLAlchemy session bound to the current engine.
-    """
-    db = SessionLocal()
-    try:
-        yield db    
-    finally:
-        db.close()
 
 # Initialize main CLI application and sub-aplications
 cli_app = typer.Typer()
@@ -128,10 +104,8 @@ def create_project(name: str = typer.Option(..., "--name", help="Project name"))
         $ python -m cli projects add --name "My New Project"
         Project My New Project successfully created with id: 5
     """
-    with session_scope() as db: 
-        # Create the project using repository layer
-        project = repo_create_project(db, ProjectCreate(name=name))
-        typer.echo(f"Project {project.name} successfully created with id: {project.project_id}")
+    project = _api_request("post", "/projects/", json={"name": name})
+    typer.echo(f"Project {project['name']} successfully created with id: {project['project_id']}")
 
 
         
@@ -158,13 +132,12 @@ def delete_project(
         Project 'Old Project' successfully deleted
     """
 
-    with session_scope() as db:
-        resolved_id = resolve_project_id(db, name=name, project_id=project_id)
-        repo_delete_project(db, resolved_id)
-        if name:
-            typer.echo(f"Project '{name}' of ID {resolved_id} successfully deleted")
-        else:
-            typer.echo(f"Project {resolved_id} successfully deleted")
+    resolved_id = resolve_project_id(_list_projects, _get_project, name=name, project_id=project_id)
+    _api_request("delete", f"/projects/{resolved_id}")
+    if name:
+        typer.echo(f"Project '{name}' of ID {resolved_id} successfully deleted")
+    else:
+        typer.echo(f"Project {resolved_id} successfully deleted")
 
         
 
@@ -192,15 +165,13 @@ def list_project(
         Project id: 21    name: MyApp    created at: 2023-10-03 14:30:00
     """
 
-    with session_scope() as db: 
-        # Get all projects
-        rows = repo_list_projects(db, skip=skip, limit=limit)
-        if not rows:
-            typer.echo("No projects")
-            return
-        # Print each project's information 
-        for project in rows:
-            typer.echo(f"Project id: {project.project_id} \tname: {project.name} \tcreated at: {project.created_at}")
+    rows = _api_request("get", "/projects/")
+    rows = rows[skip : skip + limit]
+    if not rows:
+        typer.echo("No projects")
+        return
+    for project in rows:
+        typer.echo(f"Project id: {project['project_id']} \tname: {project['name']} \tcreated at: {project.get('created_at')}")
 
         
 @project_app.command("update")
@@ -224,13 +195,9 @@ def update_project(
         $ python -m cli projects update --old-name "OldName" --new-name "NewName"
         Updated project 'OldName' with ID 1, to new name 'NewName'
     """
-    with session_scope() as db: 
-        # Get project by name
-        project = repo_get_project_by_name(db, old_name)
-        # Create update data and update
-        data = ProjectUpdate(name=new_name)
-        updated_project = repo_update_project(db, project.project_id, data)
-        typer.echo(f"Updated project '{old_name}' with ID {updated_project.project_id}, to new name '{updated_project.name}'")
+    project = resolve_project_id(_list_projects, _get_project, name=old_name)
+    updated_project = _api_request("put", f"/projects/{project}", json={"name": new_name})
+    typer.echo(f"Updated project '{old_name}' with ID {updated_project['project_id']}, to new name '{updated_project['name']}'")
 
     
     
@@ -278,42 +245,32 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
         $ python -m cli issues add --project-id 1 --title "Feature Request" --priority medium --status open --auto-tags --auto-assignee
         $ echo "Error stacktrace..." | python -m cli issues add --project-id 1 --title "Crash" --log - --priority high --status open
     """
-    with session_scope() as db: 
-        # Handle case: read log from stdin
-        if log == "-":
-            log = sys.stdin.read()
-            
-        # Parse comma-separated tags into list 
-        tag_names = parse_tags_input(tags) if tags else []
+    if log == "-":
+        log = sys.stdin.read()
 
-        final_project_id = resolve_project_id(db, name=project_name, project_id=project_id)
+    tag_names = parse_tags_input(tags) if tags else []
+    final_project_id = resolve_project_id(_list_projects, _get_project, name=project_name, project_id=project_id)
 
-        # Create issue with provided data
-        issue = repo_create_issue(
-            db,
-            IssueCreate(
-                project_id=final_project_id,
-                title=title,
-                description=description,
-                log=log,
-                summary=summary,
-                priority=priority,
-                status=status,
-                assignee=assignee,
-                tag_names=tag_names,
-                auto_generate_tags=auto_tags,
-                auto_generate_assignee=auto_assignee,
-            ),
-            tag_suggester=default_tag_suggester(),
-            assignee_strategy=default_assignee_strategy(),
-        )
-        typer.echo(f"Issue {issue.issue_id} successfully created with title '{issue.title}' in project {final_project_id}")
-            
-        # Provide information on automatic assignee assignment if selected
-        if auto_assignee and issue.assignee and not assignee:
-            typer.echo(f"Auto-assigned to: {issue.assignee}")
-        elif auto_assignee and not issue.assignee:
-            typer.echo("Auto-assignment requested but no suitable assignee found")
+    payload = {
+        "project_id": final_project_id,
+        "title": title,
+        "description": description,
+        "log": log,
+        "summary": summary,
+        "priority": priority.value,
+        "status": status.value,
+        "assignee": assignee,
+        "tag_names": tag_names,
+        "auto_generate_tags": auto_tags,
+        "auto_generate_assignee": auto_assignee,
+    }
+    issue = _api_request("post", "/issues/", json=payload)
+    typer.echo(f"Issue {issue['issue_id']} successfully created with title '{issue['title']}' in project {final_project_id}")
+
+    if auto_assignee and issue.get("assignee") and not assignee:
+        typer.echo(f"Auto-assigned to: {issue['assignee']}")
+    elif auto_assignee and not issue.get("assignee"):
+        typer.echo("Auto-assignment requested but no suitable assignee found")
   
 
         
@@ -338,9 +295,8 @@ def delete_issue(issue_id: int):
         $ python -m cli issues rm 42
         Successfully deleted issue
     """
-    with session_scope() as db: 
-        repo_delete_issue(db,issue_id)
-        typer.echo("Successfully deleted issue")
+    _api_request("delete", f"/issues/{issue_id}")
+    typer.echo("Successfully deleted issue")
 
 
 
@@ -383,39 +339,58 @@ def list_issue(
         $ python -m cli issues list --project-name "MyApp" --status open
         $ python -m cli issues list --tags "frontend,bug" --tags-match-all
     """
-    
-    with session_scope() as db: 
-        tag_names = parse_tags_input(tags) if tags else []
-        final_project_id = resolve_project_id(db, name=project_name, project_id=project_id) if (project_name or project_id) else None
-        # Fetch issues with applied filters
-        rows = repo_list_issues(db, 
-                                skip=skip, 
-                                limit=limit, 
-                                assignee=assignee, 
-                                priority=priority, 
-                                status=status,
-                                title=title,
-                                project_id=final_project_id,
-                                tags=tag_names,
-                                tags_match_all=tags_match_all)
-        # Handle empty results
-        if not rows:
-            typer.echo("No registered issues")
-            return 
-        # Display each issue with corresponding information
-        for issue in rows:
-            # Format tags
-            tag_names = [tag.name for tag in issue.tags] if issue.tags else []
-            tags_str = f"{', '.join(tag_names)}" if tag_names else "none" 
-            if project_name:
-                project_display = project_name
-            else:
-                try:
-                    project = repo_get_project(db, issue.project_id)
-                    project_display = project.name
-                except NotFound:
-                    project_display = f"Unknown (ID: {issue.project_id})"
-            typer.echo(f"Issue id: {issue.issue_id:} \ntitle: {issue.title} \ndescription: {issue.description} \nlog: {issue.log} \nsummary: {issue.summary} \npriority: {issue.priority}\nstatus: {issue.status} \nassignee: {issue.assignee} \ntags: {tags_str} \nproject_id: {issue.project_id} \nproject_name:{project_display}\n\n")
+    tag_names = parse_tags_input(tags) if tags else []
+    final_project_id = (
+        resolve_project_id(_list_projects, _get_project, name=project_name, project_id=project_id)
+        if (project_name or project_id)
+        else None
+    )
+
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "assignee": assignee,
+        "priority": priority.value if priority else None,
+        "status": status.value if status else None,
+        "title": title,
+        "project_id": final_project_id,
+        "tags": ",".join(tag_names) if tag_names else None,
+        "tags_match_all": tags_match_all,
+    }
+    rows = _api_request("get", "/issues/", params=params)
+    if not rows:
+        typer.echo("No registered issues")
+        return
+
+    project_cache = {}
+    def _project_name(pid: int) -> str:
+        if project_name and final_project_id == pid:
+            return project_name
+        if pid in project_cache:
+            return project_cache[pid]
+        try:
+            project = _get_project(pid)
+            project_cache[pid] = project["name"]
+            return project["name"]
+        except typer.Exit:
+            return f"Unknown (ID: {pid})"
+
+    for issue in rows:
+        tags_str = ", ".join([t["name"] for t in issue.get("tags", [])]) if issue.get("tags") else "none"
+        project_display = _project_name(issue["project_id"])
+        typer.echo(
+            f"Issue id: {issue['issue_id']} \n"
+            f"title: {issue['title']} \n"
+            f"description: {issue.get('description')} \n"
+            f"log: {issue.get('log')} \n"
+            f"summary: {issue.get('summary')} \n"
+            f"priority: {issue['priority']}\n"
+            f"status: {issue['status']} \n"
+            f"assignee: {issue.get('assignee')} \n"
+            f"tags: {tags_str} \n"
+            f"project_id: {issue['project_id']} \n"
+            f"project_name:{project_display}\n\n"
+        )
 
 
 @issue_app.command("update")
@@ -455,40 +430,33 @@ def update_issue(
         $ python -m cli issues update --id 42 --tags "bug,critical,backend"
         $ echo "New error log" | python -m cli issues update --id 42 --log -
     """
-    with session_scope() as db: 
-        # Handle case: read log from stdin
-        if log == "-":
-            import sys
-            log = sys.stdin.read()
+    if log == "-":
+        log = sys.stdin.read()
 
-        # Build update dictionary with only provided fields for full or partial updates
-        update_data = {}
-        if title is not None:
-            update_data["title"] = title
-        if description is not None:
-            update_data["description"] = description
-        if log is not None:
-            update_data["log"] = log
-        if summary is not None:
-            update_data["summary"] = summary
-        if priority is not None:
-            update_data["priority"] = priority
-        if status is not None:
-            update_data["status"] = status
-        if assignee is not None:
-            update_data["assignee"] = assignee
-        if tags is not None:
-            update_data["tag_names"] = parse_tags_input(tags)
-            
-        # Handle if no updates are provided
-        if not update_data:
-            typer.echo("No fields provided to update")
-            raise typer.Exit(code=1)
-                
-        # Update using repository layer  
-        data = IssueUpdate(**update_data)
-        issue = repo_update_issue(db, issue_id, data)
-        typer.echo(f"Issue {issue.issue_id} updated")
+    update_data = {}
+    if title is not None:
+        update_data["title"] = title
+    if description is not None:
+        update_data["description"] = description
+    if log is not None:
+        update_data["log"] = log
+    if summary is not None:
+        update_data["summary"] = summary
+    if priority is not None:
+        update_data["priority"] = priority.value
+    if status is not None:
+        update_data["status"] = status.value
+    if assignee is not None:
+        update_data["assignee"] = assignee
+    if tags is not None:
+        update_data["tag_names"] = parse_tags_input(tags)
+
+    if not update_data:
+        typer.echo("No fields provided to update")
+        raise typer.Exit(code=1)
+
+    _api_request("put", f"/issues/{issue_id}", json=update_data)
+    typer.echo(f"Issue {issue_id} updated")
             
 
 
@@ -517,9 +485,8 @@ def rename_tag(
         $ python -m cli tags rename --old-name "frontend" --new-name "ui"
         Tag 'frontend' renamed to 'ui' across all issues
     """
-    with session_scope() as db:
-        repo_rename_tags_everywhere(db, old_name, new_name)
-        typer.echo(f"Tag '{old_name}' renamed to '{new_name}' across all issues")
+    _api_request("patch", "/tags/rename", params={"old_name": old_name, "new_name": new_name})
+    typer.echo(f"Tag '{old_name}' renamed to '{new_name}' across all issues")
 
    
         
@@ -541,9 +508,8 @@ def delete_tag(tag_id: int = typer.Option(..., "--id", help="Tag ID")):
         $ python -m cli tags delete --id 5
         Tag 5 deleted from all issues
     """
-    with session_scope() as db:
-        if repo_delete_tag(db, tag_id):
-            typer.echo(f"Tag {tag_id} deleted from all issues")
+    _api_request("delete", f"/tags/{tag_id}")
+    typer.echo(f"Tag {tag_id} deleted from all issues")
 
         
 @tag_app.command("cleanup")
@@ -562,9 +528,9 @@ def cleanup_tags():
         $ python -m cli tags cleanup
         Cleaned up 3 unused tags
     """
-    with session_scope() as db:
-        count = repo_remove_tags_with_no_issue(db)
-        typer.echo(f"Cleaned up {count} unused tags")
+    result = _api_request("delete", "/tags/cleanup")
+    count = result["count"]
+    typer.echo(f"Cleaned up {count} unused tags")
 
 @tag_app.command("list")
 @handle_cli_exceptions
@@ -595,26 +561,21 @@ def list_tags(
         backend                       12
     """
 
-    with session_scope() as db:
-        if stats:
-            # Show tag usage statistics for each tag
-            usage_stats = repo_get_tag_usage_stats(db)
-            if not usage_stats:
-                typer.echo("No tags found")
-                return
-            
-            # Format statistics for display
-            typer.echo("Tag Usage Statistics:")
-            typer.echo(f"{'Tag Name':<20} {'Usage Count':>10}")
-            typer.echo("-" * 30)
-            for stat in usage_stats:
-                typer.echo(f"{stat['name']:<20} {stat['issue_count']:>10}")
-        else:
-            # Show tag list 
-            tags = repo_list_tags(db, skip=skip, limit=limit)
-            if not tags:
-                typer.echo("No tags found")
-                return
-            typer.echo("Available Tags:")
-            for tag in tags:
-                typer.echo(f"ID: {tag.tag_id}\tName: {tag.name}")
+    if stats:
+        usage_stats = _api_request("get", "/tags/stats/usage")
+        if not usage_stats:
+            typer.echo("No tags found")
+            return
+        typer.echo("Tag Usage Statistics:")
+        typer.echo(f"{'Tag Name':<20} {'Usage Count':>10}")
+        typer.echo("-" * 30)
+        for stat in usage_stats:
+            typer.echo(f"{stat['name']:<20} {stat['issue_count']:>10}")
+    else:
+        tags = _api_request("get", "/tags", params={"skip": skip, "limit": limit})
+        if not tags:
+            typer.echo("No tags found")
+            return
+        typer.echo("Available Tags:")
+        for tag in tags:
+            typer.echo(f"ID: {tag['tag_id']}\tName: {tag['name']}")

@@ -6,60 +6,27 @@ It keeps the same UX as the previous database-backed CLI but now calls the deplo
 """
 
 import functools
-import os
 import sys
 from typing import Optional
 
-import logging
 import requests
 import typer
 from core.enums import IssuePriority, IssueStatus
 from core.logging import get_logger
 from pydantic import ValidationError
 
+from cli.client import ApiClient
 from cli.config import API_URL, API_TOKEN
+from cli.formatters import format_issue, format_project_row, format_tag_stats
+from cli.payloads import (
+    build_issue_payload,
+    build_issue_update_payload,
+    build_project_payload,
+)
 from cli.services import parse_tags_input, resolve_project_id
 
 logger = get_logger(__name__)
-
-
-def _api_request(method: str, path: str, *, params=None, json=None):
-    """
-    Minimal HTTP helper that wraps requests and surfaces friendly errors.
-    """
-    url = f"{API_URL}{path}"
-    headers = {"Accept": "application/json"}
-    if API_TOKEN:
-        headers["Authorization"] = f"Bearer {API_TOKEN}"
-    try:
-        resp = requests.request(method, url, params=params, json=json, headers=headers, timeout=15)
-    except requests.RequestException as exc:
-        logger.error("Network error calling %s: %s", url, exc)
-        typer.echo(f"Network error calling {url}: {exc}")
-        raise typer.Exit(code=1)
-
-    if resp.status_code >= 400:
-        detail = resp.text
-        try:
-            detail_json = resp.json()
-            detail = detail_json.get("detail", detail)
-        except ValueError:
-            pass
-        logger.error("API error %s for %s: %s", resp.status_code, url, detail)
-        typer.echo(f"API error {resp.status_code}: {detail}")
-        raise typer.Exit(code=1)
-
-    if resp.headers.get("content-type", "").startswith("application/json"):
-        return resp.json()
-    return resp.text
-
-
-def _list_projects() -> list[dict]:
-    return _api_request("get", "/projects")
-
-
-def _get_project(project_id: int) -> dict:
-    return _api_request("get", f"/projects/{project_id}")
+client = ApiClient(API_URL, API_TOKEN)
 
 def handle_cli_exceptions(func):
     """
@@ -108,7 +75,8 @@ def create_project(name: str = typer.Option(..., "--name", help="Project name"))
         $ python -m cli projects add --name "My New Project"
         Project My New Project successfully created with id: 5
     """
-    project = _api_request("post", "/projects/", json={"name": name})
+    payload = build_project_payload(name)
+    project = client.create_project(payload)
     logger.info("CLI: created project '%s' (id=%s)", project['name'], project['project_id'])
     typer.echo(f"Project {project['name']} successfully created with id: {project['project_id']}")
 
@@ -137,8 +105,8 @@ def delete_project(
         Project 'Old Project' successfully deleted
     """
 
-    resolved_id = resolve_project_id(_list_projects, _get_project, name=name, project_id=project_id)
-    _api_request("delete", f"/projects/{resolved_id}")
+    resolved_id = resolve_project_id(client.list_projects, client.get_project, name=name, project_id=project_id)
+    client.delete_project(resolved_id)
     if name:
         typer.echo(f"Project '{name}' of ID {resolved_id} successfully deleted")
     else:
@@ -171,13 +139,13 @@ def list_project(
         Project id: 21    name: MyApp    created at: 2023-10-03 14:30:00
     """
 
-    rows = _api_request("get", "/projects/")
+    rows = client.list_projects()
     rows = rows[skip : skip + limit]
     if not rows:
         typer.echo("No projects")
         return
     for project in rows:
-        typer.echo(f"Project id: {project['project_id']} \tname: {project['name']} \tcreated at: {project.get('created_at')}")
+        typer.echo(format_project_row(project))
 
         
 @project_app.command("update")
@@ -201,8 +169,8 @@ def update_project(
         $ python -m cli projects update --old-name "OldName" --new-name "NewName"
         Updated project 'OldName' with ID 1, to new name 'NewName'
     """
-    project = resolve_project_id(_list_projects, _get_project, name=old_name)
-    updated_project = _api_request("put", f"/projects/{project}", json={"name": new_name})
+    project = resolve_project_id(client.list_projects, client.get_project, name=old_name)
+    updated_project = client.update_project(project, {"name": new_name})
     logger.info("CLI: updated project id=%s name '%s' -> '%s'", updated_project['project_id'], old_name, updated_project['name'])
     typer.echo(f"Updated project '{old_name}' with ID {updated_project['project_id']}, to new name '{updated_project['name']}'")
 
@@ -256,22 +224,22 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
         log = sys.stdin.read()
 
     tag_names = parse_tags_input(tags) if tags else []
-    final_project_id = resolve_project_id(_list_projects, _get_project, name=project_name, project_id=project_id)
+    final_project_id = resolve_project_id(client.list_projects, client.get_project, name=project_name, project_id=project_id)
 
-    payload = {
-        "project_id": final_project_id,
-        "title": title,
-        "description": description,
-        "log": log,
-        "summary": summary,
-        "priority": priority.value,
-        "status": status.value,
-        "assignee": assignee,
-        "tag_names": tag_names,
-        "auto_generate_tags": auto_tags,
-        "auto_generate_assignee": auto_assignee,
-    }
-    issue = _api_request("post", "/issues/", json=payload)
+    payload = build_issue_payload(
+        project_id=final_project_id,
+        title=title,
+        description=description,
+        log=log,
+        summary=summary,
+        priority=priority,
+        status=status,
+        assignee=assignee,
+        tag_names=tag_names,
+        auto_tags=auto_tags,
+        auto_assignee=auto_assignee,
+    )
+    issue = client.create_issue(payload)
     logger.info("CLI: created issue id=%s in project_id=%s", issue['issue_id'], final_project_id)
     typer.echo(f"Issue {issue['issue_id']} successfully created with title '{issue['title']}' in project {final_project_id}")
 
@@ -303,7 +271,7 @@ def delete_issue(issue_id: int):
         $ python -m cli issues rm 42
         Successfully deleted issue
     """
-    _api_request("delete", f"/issues/{issue_id}")
+    client.delete_issue(issue_id)
     logger.info("CLI: deleted issue id=%s", issue_id)
     typer.echo("Successfully deleted issue")
 
@@ -350,7 +318,7 @@ def list_issue(
     """
     tag_names = parse_tags_input(tags) if tags else []
     final_project_id = (
-        resolve_project_id(_list_projects, _get_project, name=project_name, project_id=project_id)
+        resolve_project_id(client.list_projects, client.get_project, name=project_name, project_id=project_id)
         if (project_name or project_id)
         else None
     )
@@ -366,7 +334,7 @@ def list_issue(
         "tags": ",".join(tag_names) if tag_names else None,
         "tags_match_all": tags_match_all,
     }
-    rows = _api_request("get", "/issues/", params=params)
+    rows = client.list_issues(params)
     if not rows:
         typer.echo("No registered issues")
         return
@@ -378,28 +346,14 @@ def list_issue(
         if pid in project_cache:
             return project_cache[pid]
         try:
-            project = _get_project(pid)
+            project = client.get_project(pid)
             project_cache[pid] = project["name"]
             return project["name"]
         except typer.Exit:
             return f"Unknown (ID: {pid})"
 
     for issue in rows:
-        tags_str = ", ".join([t["name"] for t in issue.get("tags", [])]) if issue.get("tags") else "none"
-        project_display = _project_name(issue["project_id"])
-        typer.echo(
-            f"Issue id: {issue['issue_id']} \n"
-            f"title: {issue['title']} \n"
-            f"description: {issue.get('description')} \n"
-            f"log: {issue.get('log')} \n"
-            f"summary: {issue.get('summary')} \n"
-            f"priority: {issue['priority']}\n"
-            f"status: {issue['status']} \n"
-            f"assignee: {issue.get('assignee')} \n"
-            f"tags: {tags_str} \n"
-            f"project_id: {issue['project_id']} \n"
-            f"project_name:{project_display}\n\n"
-        )
+        typer.echo(format_issue(issue, _project_name) + "\n")
 
 
 @issue_app.command("update")
@@ -442,29 +396,23 @@ def update_issue(
     if log == "-":
         log = sys.stdin.read()
 
-    update_data = {}
-    if title is not None:
-        update_data["title"] = title
-    if description is not None:
-        update_data["description"] = description
-    if log is not None:
-        update_data["log"] = log
-    if summary is not None:
-        update_data["summary"] = summary
-    if priority is not None:
-        update_data["priority"] = priority.value
-    if status is not None:
-        update_data["status"] = status.value
-    if assignee is not None:
-        update_data["assignee"] = assignee
-    if tags is not None:
-        update_data["tag_names"] = parse_tags_input(tags)
+    update_data = build_issue_update_payload(
+        title=title,
+        description=description,
+        log=log,
+        summary=summary,
+        priority=priority,
+        status=status,
+        assignee=assignee,
+        tags=tags,
+        parse_tags=parse_tags_input,
+    )
 
     if not update_data:
         typer.echo("No fields provided to update")
         raise typer.Exit(code=1)
 
-    _api_request("put", f"/issues/{issue_id}", json=update_data)
+    client.update_issue(issue_id, update_data)
     logger.info("CLI: updated issue id=%s", issue_id)
     typer.echo(f"Issue {issue_id} updated")
             
@@ -495,7 +443,7 @@ def rename_tag(
         $ python -m cli tags rename --old-name "frontend" --new-name "ui"
         Tag 'frontend' renamed to 'ui' across all issues
     """
-    _api_request("patch", "/tags/rename", params={"old_name": old_name, "new_name": new_name})
+    client.rename_tag(old_name, new_name)
     logger.info("CLI: renamed tag '%s' -> '%s'", old_name, new_name)
     typer.echo(f"Tag '{old_name}' renamed to '{new_name}' across all issues")
 
@@ -519,7 +467,7 @@ def delete_tag(tag_id: int = typer.Option(..., "--id", help="Tag ID")):
         $ python -m cli tags delete --id 5
         Tag 5 deleted from all issues
     """
-    _api_request("delete", f"/tags/{tag_id}")
+    client.delete_tag(tag_id)
     logger.info("CLI: deleted tag id=%s", tag_id)
     typer.echo(f"Tag {tag_id} deleted from all issues")
 
@@ -540,7 +488,7 @@ def cleanup_tags():
         $ python -m cli tags cleanup
         Cleaned up 3 unused tags
     """
-    result = _api_request("delete", "/tags/cleanup")
+    result = client.cleanup_tags()
     count = result["count"]
     logger.info("CLI: cleaned up %s unused tags", count)
     typer.echo(f"Cleaned up {count} unused tags")
@@ -575,17 +523,13 @@ def list_tags(
     """
 
     if stats:
-        usage_stats = _api_request("get", "/tags/stats/usage")
+        usage_stats = client.list_tag_stats()
         if not usage_stats:
             typer.echo("No tags found")
             return
-        typer.echo("Tag Usage Statistics:")
-        typer.echo(f"{'Tag Name':<20} {'Usage Count':>10}")
-        typer.echo("-" * 30)
-        for stat in usage_stats:
-            typer.echo(f"{stat['name']:<20} {stat['issue_count']:>10}")
+        typer.echo(format_tag_stats(usage_stats))
     else:
-        tags = _api_request("get", "/tags", params={"skip": skip, "limit": limit})
+        tags = client.list_tags({"skip": skip, "limit": limit})
         if not tags:
             typer.echo("No tags found")
             return

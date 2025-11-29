@@ -1,17 +1,55 @@
 # Bug-Tracker 
 
+## Table of Contents
+- [Overview](#overview)
+- [Features](#features)  
+- [Quick Start](#quick-start)
+- [Web Interface](#web-interface)
+- [Configuration](#configuration)
+- [Command Line Interface](#command-line-interface)
+- [Architecture](#architecture)
+- [Automation Features](#automation-features)
+- [Database Schema](#database-schema)
+- [API Endpoints](#api-endpoints)
+- [CI/CD](#cicd)
+- [Testing](#testing)
+- [Development](#development)
+- [Common Commands](#common-commands)
+
+## Overview
+
 A comprehensive issue tracking system with both web interface and command-line interface, featuring automated tag generation and intelligent assignee suggestions.
+
+Built with FastAPI and Typer CLI, this containerized application is designed for local development and Azure deployment (ACI). It includes health/metrics endpoints, Prometheus monitoring configuration, and complete CI/CD pipelines that run tests with coverage gates and automatically deploy the `main` branch.
+
+**Key Capabilities:**
+- Dual interface design (Web + CLI)
+- Automation features based on keyword analysis and workload algorithms
+- Production-ready deployment pipeline
+- Comprehensive monitoring and observability
 
 ## Features
 
+### Core Functionality
 - **Web Interface**: Modern, responsive web UI for managing projects, issues, and tags
-- **Command Line Interface**: Full CLI for automation and power users
+- **Command Line Interface**: Full CLI for automation and scripting
 - **Project Management**: Create and organize projects with associated issues
 - **Issue Tracking**: Complete CRUD operations with filtering and search capabilities
-- **Automated Tag Generation**: AI-powered tag suggestions based on issue content
-- **Smart Assignee Assignment**: Intelligent assignee suggestions based on expertise and workload
-- **Analytics Dashboard**: Visual insights with charts
+
+### Intelligent Automation
+- **Automated Tag Generation**: tag suggestions based on issue content analysis
+- **Smart Assignee Assignment**: Intelligent assignee suggestions based on expertise and workload algorithms
 - **Tag Management**: Organize and analyze tag usage across projects
+
+### Analytics & Insights
+- **Analytics Dashboard**: Visual insights with charts and statistics
+- **Usage Analytics**: Track tag usage patterns and team performance
+- **Health Monitoring**: Built-in health checks and Prometheus metrics
+
+### DevOps Features
+- **Containerized Deployment**: Docker-ready with Azure Container Instances support
+- **CI/CD Pipeline**: Automated testing and deployment with coverage gates
+- **Monitoring**: Prometheus metrics and observability tools
 
 ## Quick Start
 
@@ -41,7 +79,7 @@ pip install -r requirements.txt
 
 4. Start the web server:
 ```bash
-uvicorn app:app --reload
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 5. Open your browser and navigate to `http://localhost:8000`
@@ -55,6 +93,47 @@ The web interface provides:
 - **Issues** (`/issues`) - Create, edit, filter, and manage issues
 - **Tags** (`/tags`) - Manage tags and view usage analytics
 
+
+## Configuration
+
+The Bug Tracker application can be configured through environment variables. Configuration applies to both the web application and CLI tool.
+
+### Application Configuration
+
+| Variable | Description | Default | Examples |
+|----------|-------------|---------|----------|
+| `DATABASE_URL` | Database connection string | `sqlite:///./bugtracker.db` | `postgresql://user:pass@host:5432/db` |
+| `SECRET_KEY` | Secret key for security (JWT, sessions) | Auto-generated | `your-secret-key-here` |
+| `LOG_LEVEL` | Application logging level | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+
+### CLI Configuration
+
+| Variable | Description | Default | Examples |
+|----------|-------------|---------|----------|
+| `API_URL` | Target API endpoint | `http://localhost:8000` | `https://bugtracker-app.northeurope.azurecontainer.io:8000` |
+| `API_TOKEN` | Authentication token (reserved for future use) | None | `your-api-token-here` |
+| `LOG_LEVEL` | CLI logging level | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+
+
+**Local Development**
+```bash
+export DATABASE_URL="sqlite:///./bugtracker.db"
+export API_URL="http://localhost:8000"
+export LOG_LEVEL=INFO
+```
+
+**Production (Azure Container Instances)**
+```bash
+# Secrets configured in GitHub for deploy.yml:
+# AZURE_CREDENTIALS, AZURE_REGISTRY_LOGIN_SERVER, AZURE_REGISTRY_USERNAME,
+# AZURE_REGISTRY_PASSWORD, AZURE_RESOURCE_GROUP, DATABASE_URL
+# Deploy runs automatically after CI success on main.
+
+# To run the built image manually:
+docker pull <registry>/bugtracker:latest
+docker run -p 8000:8000 -e DATABASE_URL="$DATABASE_URL" <registry>/bugtracker:latest
+```
+
 ### API Documentation
 
 When the server is running, access the interactive API documentation:
@@ -63,14 +142,10 @@ When the server is running, access the interactive API documentation:
 
 ## Command Line Interface
 
-The CLI is published on PyPI and can also be run directly from the repo. Use whichever invocation matches how you installed it:
+The CLI is published on PyPI ([bug-tracker-cli](https://pypi.org/project/bug-tracker-cli/)) and can also be run directly from the repo. Use whichever invocation matches how you installed it:
 
 - Installed from PyPI (or `pip install .`): run commands with `cli ...`
 - Running directly from the repo without installing: use `python -m cli ...`
-
-Environment for CLI:
-- Set `API_URL` to your target API (default: `http://localhost:8000`; use your deployed host for production).
-- `API_TOKEN` is reserved for future auth and not used currently.
 
 ### Install from PyPI
 ```bash
@@ -142,53 +217,67 @@ cli tags cleanup
 
 ## Architecture
 
-### Main project Structure
+### Main project structure
 ```
 Bug-Tracker/
-├── app.py                # FastAPI web application
-├── config.py             # Configuration settings
-├── requirements.txt      # Python dependencies
-├── cli/                  # Command line interface
-│   ├── main.py          # CLI commands and logic
-│   └── __main__.py      # CLI entry point
-├── core/                # Core business logic
-│   ├── models.py        # Database models
-│   ├── schemas.py       # Pydantic schemas
-│   ├── db.py           # Database configuration
-│   ├── validation.py   # Data validation
-│   ├── automation/     # Automation features
-│   │   ├── tag_generator.py      # Auto tag generation
-│   │   └── assignee_suggestion.py # Smart assignee assigner
-│   └── repos/          # Data access layer
-│       ├── projects.py     # Project repository - handles project creation, retrieval, updates, deletion
-│       ├── issues.py       # Issue repository - manages issue CRUD, filtering, tag associations, auto-assignment
-│       └── tags.py         # Tag repository - tag operations, usage stats, cleanup, renaming
-├── web/                 # Web interface
-│   ├── api/            # REST API endpoints
+├── app.py                      # FastAPI app (lifespan, metrics, routes)
+├── config.py                   # App configuration (DATABASE_URL validation)
+├── requirements.txt            # Python dependencies
+├── Dockerfile                  # Container image
+├── docker-compose.yml          # Local stack
+├── prometheus.yml              # Prometheus scrape config
+├── .env.example                # Sample environment variables
+├── cli/                        # Command line interface
+│   ├── __main__.py             # CLI entry point
+│   ├── main.py                 # CLI commands
+│   ├── client.py               # Thin API client
+│   ├── config.py               # CLI config (API_URL/API_TOKEN validation)
+│   ├── payloads.py             # Payload builders
+│   ├── formatters.py           # Output formatting
+│   └── services.py             # Shared CLI utilities
+├── core/                       # Core business logic
+│   ├── logging.py              # Logging configuration
+│   ├── enums.py                # Domain enums
+│   ├── db.py                   # DB config/session
+│   ├── models.py               # SQLAlchemy models
+│   ├── schemas.py              # Pydantic schemas
+│   ├── validation.py           # Validation helpers
+│   ├── automation/             # Automation features
+│   │   ├── tag_generator.py
+│   │   └── assignee_suggestion.py
+│   └── repos/                  # Data access layer
+│       ├── projects.py
+│       ├── issues.py
+│       └── tags.py
+├── web/                        # Web interface
+│   ├── api/                    # REST API endpoints
 │   │   ├── projects.py
 │   │   ├── issues.py
 │   │   └── tags.py
-│   │  
-│   ├── templates/      # HTML templates
-│   └── static/         # CSS, JavaScript, assets
-└── tests/              # Test suite
+│   ├── templates/              # HTML templates
+│   └── static/                 # CSS, JS, assets
+├── tests/                      # Test suite
+│   ├── unit/
+│   └── integration/
+└── .github/workflows/          # CI/CD pipelines
+    ├── ci.yml                  # Tests + coverage gate
+    └── deploy.yml              # Deploy to ACI after CI success
 ```
 
 ### Technology Stack
 
-- **Backend**: FastAPI, SQLAlchemy, SQLite
-- **Frontend**: HTML5, CSS3, JavaScript, Chart.js
+- **Backend**: FastAPI, SQLAlchemy, Alembic
 - **CLI**: Typer
-- **Testing**: pytest
-- **Automation Features**: 
-  - **Tag Generation**: Custom keyword-based algorithms
-  - **Assignee Assignment**: Data-driven expertise and workload analysis
+- **Monitoring**: Prometheus client, `/metrics`, `/health`
+- **Container/Deploy**: Docker, Azure ACI/ACR, GitHub Actions CI/CD
+- **Testing**: pytest with coverage gate
+- **Automation**: Tag generation, assignee suggestion
 
 ## Automation Features
 
 ### Automatic Tag Generation
 
-The system can automatically suggest tags based on issue content:
+The system can automatically suggest tags based on issue content by analyzing title, description, and logs:
 
 ```python
 # Keywords are analyzed from title, description, and logs
@@ -200,24 +289,49 @@ Keywords = {
 }
 ```
 
+**Matching Logic**:
+- Keywords use word boundary matching (e.g., "bug" matches "bug" but not "debugging")
+- Matching is case-insensitive
+- All matching categories are suggested as tags for the issue
+
 ### Smart Assignee Assignment
 
-Assignee suggestions are based on:
-- Tag expertise (success rate with specific tags)
-- Current workload (number of open issues)
+The system intelligently suggests the best team member to handle an issue by analyzing:
+- **Tag Expertise**: Success rate with specific tags (calculated as the number of closed issues tagged with that category for each assignee)
+- **Current Workload**: Number of open issues currently assigned to each team member
 
-Assignment logic only applies to:
-- Status: "open" (unresolved issues)
-- Priority: "high" (critical issues need immediate attention by best experts)
+**Assignment Strategy**:
+- Prioritizes assignees with highest success rate for the issue's tags
+- Among candidates with similar expertise, selects the person with the lowest workload
+- Only applies to high-priority, open-status issues (critical issues need immediate attention from best experts)
+
+**Access via API**: `POST /issues/{id}/auto-assign` to automatically assign based on the algorithm
 
 ## Database Schema
 
-The system uses SQLite with the following main entities:
+The system defaults to SQLite locally and runs against Postgres in CI/production.
 
-- **Projects**: Container for organizing issues
-- **Issues**: Core tracking entity with title, description, log, summary, status, priority, assignee
-- **Tags**: Categorization system with many-to-many relationship to issues
+**Main Entities**:
+
+- **Projects**: Container for organizing issues (unique name, 1-200 characters)
+- **Issues**: Core tracking entity with title, description, log, summary, status, priority, assignee; belongs to a project
+- **Tags**: Many-to-many labels for issues (1-100 characters per tag name)
 - **Issue-Tag Association**: Junction table for flexible tagging
+
+**Field Constraints**:
+- Project names: 1-200 characters (required, unique, indexed)
+- Tag names: 1-100 characters (required, unique, indexed)
+- Issue titles: 1-100 characters (required)
+- Issue status: `open`, `in_progress`, or `closed`
+- Issue priority: `low`, `medium`, or `high`
+
+**Performance Indexes**:
+- Composite index on `(issues.status, issues.priority)` - optimizes filtered issue queries
+- Composite index on `(issues.assignee, issues.status)` - optimizes workload calculations
+- Individual indexes on `assignee`, `created_at`, `priority`, `project_id`, and `status`
+
+**Database Migrations**:
+The application uses Alembic for schema versioning. Migration files are stored in the `migrations/versions/` directory. The most recent migration is applied automatically when the application starts (see `docker-compose.yml` and `Dockerfile`). To manually check or modify migrations, use the Alembic commands in the [Common Commands](#common-commands) section.
 
 ## API Endpoints
 
@@ -245,38 +359,83 @@ The system uses SQLite with the following main entities:
 - `DELETE /tags/cleanup` - Remove unused tags
 - `GET /tags/stats/usage` - Get usage statistics
 
-## Monitoring & Health
-
+### Monitoring & Health
 - `GET /health` returns basic status with a database connectivity probe.
 - `GET /metrics` exposes Prometheus metrics (request count, latency, errors).
-- Sample Prometheus config: see `prometheus.yml` (update `targets` to your deployed host, e.g. `bugtracker-app.northeurope.azurecontainer.io:8000`).
-- Quick local scrape:
-  ```bash
-  docker run --rm -p 9090:9090 \
-    -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
-    prom/prometheus
-  ```
-  UI: open `http://localhost:9090` → **Status > Targets** to confirm UP, then **Graph** and query `http_requests_total` or `http_request_duration_seconds_bucket`.
-  
+
+**Prometheus Configuration**:
+- For local development: Uncomment the `localhost:8000` target in `prometheus.yml` (change `# - localhost:8000` to `- localhost:8000`)
+- For production: Update the target to your deployed host (e.g., `bugtracker-app.northeurope.azurecontainer.io:8000`)
+
+**Quick local setup**:
+```bash
+docker run --rm -p 9090:9090 \
+  -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
+  prom/prometheus
+```
+Then visit `http://localhost:9090`, go to **Status > Targets** and ensure your host is UP; then open **Graph**, run queries like `http_requests_total` or `http_request_duration_seconds_bucket`, and plot the results.
+
+### API Response Examples
+
+For interactive exploration of response schemas, use the built-in Swagger UI documentation:
+- **Swagger UI**: `http://localhost:8000/docs` - Try out API requests and see live responses
+- **ReDoc**: `http://localhost:8000/redoc` - Browse detailed schema documentation
+
+**Example Health Check Response**:
+```json
+{
+  "status": "healthy",
+  "database": "connected"
+}
+```
+
+**Example Get Project Response**:
+```json
+{
+  "id": 1,
+  "name": "My Project",
+  "created_at": "2024-01-15T10:30:00"
+}
+```
+
+**Example Get Issue Response**:
+```json
+{
+  "id": 42,
+  "project_id": 1,
+  "title": "Login button not responsive",
+  "description": "Button doesn't respond on mobile",
+  "priority": "high",
+  "status": "open",
+  "assignee": "alice",
+  "tags": ["frontend", "bug"],
+  "created_at": "2024-01-20T14:22:15",
+  "updated_at": "2024-01-21T09:45:30"
+}
+```
+
 
 ## CI/CD
 
-- CI (`ci.yml`) runs tests with coverage gate 70% and builds on each push/PR.
-- Deploy (`deploy.yml`) runs only after CI succeeds on `main` via `workflow_run` and deploys the tested commit to ACI.
-- Required secrets (set in GitHub): `AZURE_CREDENTIALS`, `AZURE_REGISTRY_LOGIN_SERVER`, `AZURE_REGISTRY_USERNAME`, `AZURE_REGISTRY_PASSWORD`, `AZURE_RESOURCE_GROUP`, `DATABASE_URL`.
-- CI fails if coverage < 70%; full HTML coverage report is uploaded as a workflow artifact in CI runs.
-- Flow: PR → CI (tests + coverage) → on success `deploy.yml` updates ACI; only `main` deploys. Live endpoint: `http://bugtracker-app.northeurope.azurecontainer.io:8000`.
-- Images are tagged with commit SHA and `latest`; to roll back, redeploy the previous SHA tag instead of `latest` in the ACI create command.
+- **Pipeline**: CI (`ci.yml`) runs tests with 70% coverage gate on each push/PR
+- **Deployment**: Deploy (`deploy.yml`) runs only after CI succeeds on `main` via `workflow_run` 
+- **Secrets Required**: `AZURE_CREDENTIALS`, `AZURE_REGISTRY_LOGIN_SERVER`, `AZURE_REGISTRY_USERNAME`, `AZURE_REGISTRY_PASSWORD`, `AZURE_RESOURCE_GROUP`, `DATABASE_URL`
+- **Live Endpoint**: http://bugtracker-app.northeurope.azurecontainer.io:8000
 
 ### Containerization & Deployment
 
-- Local container test:
-  ```bash
-  docker build -t bugtracker:local .
-  docker run --rm -p 8000:8000 -e DATABASE_URL="sqlite:///./bugtracker.db" bugtracker:local
-  ```
-- CI/CD deploys to Azure Container Instances with the tested commit on `main` using the ACR image tagged with the commit SHA and `latest`.
-- Rollback: redeploy an older image tag (SHA) instead of `latest` in the ACI `az container create` command.
+**Local Testing:**
+```bash
+docker build -t bugtracker:local .
+docker run --rm -p 8000:8000 -e DATABASE_URL="sqlite:///./bugtracker.db" bugtracker:local
+```
+
+**Production Deployment:**
+- Images tagged with commit SHA and `latest`
+- Automated deployment to Azure Container Instances on `main` branch
+- **Rollback**: Redeploy using older SHA tag instead of `latest` in ACI create command
+
+**Flow**: PR > CI (tests + coverage) > Deploy (if CI passes) > ACI Updates
 
 ## Testing
 
@@ -291,13 +450,14 @@ pytest tests/test_api_*.py      # API tests
 pytest tests/test_repo_*.py     # Repository tests
 pytest tests/test_cli.py        # CLI tests
 
+# Run tests by type
+pytest tests/unit/              # Unit tests (isolated, fast)
+pytest tests/integration/       # Integration tests (database, API)
+
+# Run with coverage
+pytest --cov=. --cov-report=html --cov-fail-under=70
 ```
 
-## Configuration
-
-The application can be configured through environment variables or `config.py`:
-
-- `DATABASE_URL`: Database connection string (default: SQLite)
 
 ## Development
 
@@ -306,13 +466,57 @@ The application can be configured through environment variables or `config.py`:
 - **Repository Pattern**: Clean separation between business logic and data access through repository classes
 - **Schema Validation**: Pydantic schemas ensure data integrity
 - **Error Handling**: Consistent exception handling across CLI and API
-- **Separation of Concerns**: Clear separation between web, CLI, and core logic
+- **Separation of Concerns**: Clear separation between web, CLI, and core logic; CLI split into client/payloads/formatters/services
+- **Config/Logging**: Centralized logging (`core/logging.py`, `LOG_LEVEL` env) and config validation (`config.py`, `cli/config.py`)
+- **Observability**: `/health`, `/metrics`, Prometheus config; metrics middleware with duplication guard
+- **Testing**: Unit/integration suites with 70% coverage gate in CI
 
-### Adding New Features
+### Exception Handling
 
-1. Define data models in `core/models.py`
-2. Create Pydantic schemas in `core/schemas.py`
-3. Implement repository methods in `core/repos/`
-4. Add API endpoints in `web/api/`
-5. Add CLI commands in `cli/main.py`
-6. Create tests in `tests/`
+The application uses custom exceptions for consistent error handling:
+
+- **`NotFound`** - Raised when a resource (project, issue, or tag) doesn't exist
+  - HTTP Response: 404 Not Found
+  - CLI Response: Error message with resource details
+
+- **`AlreadyExists`** - Raised when attempting to create a duplicate resource (e.g., project with same name, tag that already exists)
+  - HTTP Response: 409 Conflict
+  - CLI Response: Error message indicating the resource already exists
+
+- **`ValidationError`** - Raised by Pydantic when input data doesn't match expected schema
+  - HTTP Response: 422 Unprocessable Entity
+  - CLI Response: Detailed validation error messages
+
+All exceptions are defined in `core/repos/exceptions.py` and automatically converted to appropriate HTTP responses by FastAPI's exception handlers.
+
+
+## Common Commands
+
+```bash
+# Local development
+docker-compose up --build      # Start everything
+docker-compose down             # Stop everything
+docker-compose ps              # Check service status (healthy, starting, exited)
+docker-compose logs app         # See app logs
+docker-compose logs db          # See database logs
+docker-compose exec db psql ... # Access database
+
+# Verify health status
+docker-compose ps              # Shows "(healthy)" status for each service
+# Expected output:
+#   NAME    STATUS
+#   app     Up X min (healthy)
+#   db      Up X min (healthy)
+
+# Database migrations
+alembic current                # Check current migration version
+alembic history                # View migration history
+alembic revision --autogenerate -m "description"  # Generate new migration
+alembic upgrade head           # Apply all pending migrations
+alembic downgrade -1           # Revert to previous migration
+alembic stamp head             # Mark all migrations as applied (if DB exists)
+
+# View Azure resources
+az container show --resource-group bugtracker-rg --name bugtracker-app
+az container logs --resource-group bugtracker-rg --name bugtracker-app
+```

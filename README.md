@@ -68,6 +68,10 @@ The CLI is published on PyPI and can also be run directly from the repo. Use whi
 - Installed from PyPI (or `pip install .`): run commands with `cli ...`
 - Running directly from the repo without installing: use `python -m cli ...`
 
+Environment for CLI:
+- Set `API_URL` to your target API (default: `http://localhost:8000`; use your deployed host for production).
+- `API_TOKEN` is reserved for future auth and not used currently.
+
 ### Install from PyPI
 ```bash
 pip install bug-tracker-cli
@@ -76,7 +80,6 @@ pip install bug-tracker-cli
 cli --help
 ```
 
-Set `API_URL` to point at your deployment when needed (defaults to the hosted demo), and optionally `API_TOKEN` if auth is enabled.
 Changes made via the CLI appear in the web UI after a page refresh.
 
 ### Run locally from this repo
@@ -254,6 +257,26 @@ The system uses SQLite with the following main entities:
     prom/prometheus
   ```
   UI: open `http://localhost:9090` → **Status > Targets** to confirm UP, then **Graph** and query `http_requests_total` or `http_request_duration_seconds_bucket`.
+  
+
+## CI/CD
+
+- CI (`ci.yml`) runs tests with coverage gate 70% and builds on each push/PR.
+- Deploy (`deploy.yml`) runs only after CI succeeds on `main` via `workflow_run` and deploys the tested commit to ACI.
+- Required secrets (set in GitHub): `AZURE_CREDENTIALS`, `AZURE_REGISTRY_LOGIN_SERVER`, `AZURE_REGISTRY_USERNAME`, `AZURE_REGISTRY_PASSWORD`, `AZURE_RESOURCE_GROUP`, `DATABASE_URL`.
+- CI fails if coverage < 70%; full HTML coverage report is uploaded as a workflow artifact in CI runs.
+- Flow: PR → CI (tests + coverage) → on success `deploy.yml` updates ACI; only `main` deploys. Live endpoint: `http://bugtracker-app.northeurope.azurecontainer.io:8000`.
+- Images are tagged with commit SHA and `latest`; to roll back, redeploy the previous SHA tag instead of `latest` in the ACI create command.
+
+### Containerization & Deployment
+
+- Local container test:
+  ```bash
+  docker build -t bugtracker:local .
+  docker run --rm -p 8000:8000 -e DATABASE_URL="sqlite:///./bugtracker.db" bugtracker:local
+  ```
+- CI/CD deploys to Azure Container Instances with the tested commit on `main` using the ACR image tagged with the commit SHA and `latest`.
+- Rollback: redeploy an older image tag (SHA) instead of `latest` in the ACI `az container create` command.
 
 ## Testing
 

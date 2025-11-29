@@ -9,8 +9,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from core.db import engine
+from core.logging import configure_logging, get_logger
 from core.models import Base
 from web.api import projects, tags, issues
+
+configure_logging()
+logger = get_logger(__name__)
 
 app = FastAPI(title = "BugTracker")
 
@@ -31,6 +35,25 @@ REQUEST_ERRORS = Counter(
     "Total HTTP requests that returned errors (status >= 400)",
     ["method", "path", "status"],
 )
+
+
+@app.on_event("startup")
+async def on_startup():
+    logger.info("Application startup")
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    logger.info("Application shutdown")
+
+
+@app.middleware("http")
+async def exception_logging_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception:
+        logger.exception("Unhandled exception for %s %s", request.method, request.url.path)
+        raise
 
 
 @app.middleware("http")

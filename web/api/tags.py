@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from core import schemas
 from core.db import get_db
+from core.logging import get_logger
 from core.repos import tags as repo_tags
 from core.repos.exceptions import NotFound, AlreadyExists
 from pydantic import ValidationError
@@ -25,6 +26,7 @@ from web.api.exceptions import handle_repo_exceptions
 
 
 router = APIRouter(prefix="/tags", tags=["tags"])
+logger = get_logger(__name__)
 
 
 
@@ -72,6 +74,7 @@ def cleanup_unused_tags(db: Session = Depends(get_db)):
         422: If validation fails.
     """
     count = repo_tags.remove_tags_with_no_issue(db)
+    logger.info("Cleaned up %s unused tags", count)
     return {"message": f"Cleaned up {count} unused tags", "count": count}
     
 
@@ -101,6 +104,7 @@ def rename_tag(
         422: If validation fails.
     """
     repo_tags.rename_tags_everywhere(db, old_name, new_name)
+    logger.info("Renamed tag '%s' to '%s'", old_name, new_name)
     return {"message": f"Tag '{old_name}' renamed to '{new_name}' across all issues"}
 
 # GET TAG USAGE STATISTICS
@@ -143,6 +147,7 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)):
         422: If validation fails.
     """
     repo_tags.delete_tag(db, tag_id)
+    logger.info("Deleted tag id=%s", tag_id)
     return {"message": f"Tag {tag_id} deleted successfully"}
 
 # GET TAG BY ID

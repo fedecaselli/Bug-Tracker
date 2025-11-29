@@ -17,6 +17,7 @@ from typing import Optional, List
 from fastapi import Query
 from core import schemas
 from core.db import get_db
+from core.logging import get_logger
 from core.repos import issues as repo_issues
 from core.repos.exceptions import NotFound, AlreadyExists
 from core.automation import (
@@ -32,6 +33,7 @@ from web.api.exceptions import handle_repo_exceptions
 
 # Initialize the router for issue related endpoints
 router = APIRouter(prefix="/issues", tags=["issues"])
+logger = get_logger(__name__)
 
 # Dependency providers for automation strategies
 def get_tag_suggester() -> TagSuggester:
@@ -66,12 +68,14 @@ def create_issue(
     Returns:
         schemas.IssueOut: The created issue.
     """
-    return repo_issues.create_issue(
+    issue = repo_issues.create_issue(
         db,
         data,
         tag_suggester=tag_suggester,
         assignee_strategy=assignee_strategy,
     )
+    logger.info("Created issue id=%s in project_id=%s", issue.issue_id, issue.project_id)
+    return issue
     
 
 #LIST ISSUES
@@ -140,7 +144,9 @@ def auto_assign_issue(
     success = assignee_strategy.auto_assign(db, issue_id)
     if success:
         issue_after = repo_issues.get_issue(db, issue_id)
+        logger.info("Auto-assigned issue id=%s to '%s'", issue_id, issue_after.assignee)
         return {"assigned_to": issue_after.assignee}
+    logger.warning("Auto-assign failed for issue id=%s", issue_id)
     raise HTTPException(status_code=400, detail="Could not automatically assign")
 
 
@@ -238,7 +244,9 @@ def update_issue(issue_id: int, data: schemas.IssueUpdate, db: Session = Depends
         409: If a conflict occurs.
         422: If validation fails.
     """
-    return repo_issues.update_issue(db, issue_id, data)
+    updated = repo_issues.update_issue(db, issue_id, data)
+    logger.info("Updated issue id=%s", issue_id)
+    return updated
 
         
 #DELETE ISSUE
@@ -261,4 +269,5 @@ def delete_issue(issue_id: int, db: Session = Depends(get_db)):
         422: If validation fails.
     """
     repo_issues.delete_issue(db, issue_id)
+    logger.info("Deleted issue id=%s", issue_id)
     return {"message": f"Issue {issue_id} deleted successfully"}

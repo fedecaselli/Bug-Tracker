@@ -10,15 +10,17 @@ import os
 import sys
 from typing import Optional
 
+import logging
 import requests
 import typer
 from core.enums import IssuePriority, IssueStatus
+from core.logging import get_logger
 from pydantic import ValidationError
 
+from cli.config import API_URL, API_TOKEN
 from cli.services import parse_tags_input, resolve_project_id
 
-API_URL = os.getenv("API_URL", "http://bugtracker-app.northeurope.azurecontainer.io:8000")
-API_TOKEN = os.getenv("API_TOKEN") # for authentication if added (if there is enough time)
+logger = get_logger(__name__)
 
 
 def _api_request(method: str, path: str, *, params=None, json=None):
@@ -32,6 +34,7 @@ def _api_request(method: str, path: str, *, params=None, json=None):
     try:
         resp = requests.request(method, url, params=params, json=json, headers=headers, timeout=15)
     except requests.RequestException as exc:
+        logger.error("Network error calling %s: %s", url, exc)
         typer.echo(f"Network error calling {url}: {exc}")
         raise typer.Exit(code=1)
 
@@ -42,6 +45,7 @@ def _api_request(method: str, path: str, *, params=None, json=None):
             detail = detail_json.get("detail", detail)
         except ValueError:
             pass
+        logger.error("API error %s for %s: %s", resp.status_code, url, detail)
         typer.echo(f"API error {resp.status_code}: {detail}")
         raise typer.Exit(code=1)
 
@@ -105,6 +109,7 @@ def create_project(name: str = typer.Option(..., "--name", help="Project name"))
         Project My New Project successfully created with id: 5
     """
     project = _api_request("post", "/projects/", json={"name": name})
+    logger.info("CLI: created project '%s' (id=%s)", project['name'], project['project_id'])
     typer.echo(f"Project {project['name']} successfully created with id: {project['project_id']}")
 
 
@@ -138,6 +143,7 @@ def delete_project(
         typer.echo(f"Project '{name}' of ID {resolved_id} successfully deleted")
     else:
         typer.echo(f"Project {resolved_id} successfully deleted")
+    logger.info("CLI: deleted project id=%s", resolved_id)
 
         
 
@@ -197,6 +203,7 @@ def update_project(
     """
     project = resolve_project_id(_list_projects, _get_project, name=old_name)
     updated_project = _api_request("put", f"/projects/{project}", json={"name": new_name})
+    logger.info("CLI: updated project id=%s name '%s' -> '%s'", updated_project['project_id'], old_name, updated_project['name'])
     typer.echo(f"Updated project '{old_name}' with ID {updated_project['project_id']}, to new name '{updated_project['name']}'")
 
     
@@ -265,6 +272,7 @@ def create_issue(project_id: Optional[int] = typer.Option(None, "--project-id", 
         "auto_generate_assignee": auto_assignee,
     }
     issue = _api_request("post", "/issues/", json=payload)
+    logger.info("CLI: created issue id=%s in project_id=%s", issue['issue_id'], final_project_id)
     typer.echo(f"Issue {issue['issue_id']} successfully created with title '{issue['title']}' in project {final_project_id}")
 
     if auto_assignee and issue.get("assignee") and not assignee:
@@ -296,6 +304,7 @@ def delete_issue(issue_id: int):
         Successfully deleted issue
     """
     _api_request("delete", f"/issues/{issue_id}")
+    logger.info("CLI: deleted issue id=%s", issue_id)
     typer.echo("Successfully deleted issue")
 
 
@@ -456,6 +465,7 @@ def update_issue(
         raise typer.Exit(code=1)
 
     _api_request("put", f"/issues/{issue_id}", json=update_data)
+    logger.info("CLI: updated issue id=%s", issue_id)
     typer.echo(f"Issue {issue_id} updated")
             
 
@@ -486,6 +496,7 @@ def rename_tag(
         Tag 'frontend' renamed to 'ui' across all issues
     """
     _api_request("patch", "/tags/rename", params={"old_name": old_name, "new_name": new_name})
+    logger.info("CLI: renamed tag '%s' -> '%s'", old_name, new_name)
     typer.echo(f"Tag '{old_name}' renamed to '{new_name}' across all issues")
 
    
@@ -509,6 +520,7 @@ def delete_tag(tag_id: int = typer.Option(..., "--id", help="Tag ID")):
         Tag 5 deleted from all issues
     """
     _api_request("delete", f"/tags/{tag_id}")
+    logger.info("CLI: deleted tag id=%s", tag_id)
     typer.echo(f"Tag {tag_id} deleted from all issues")
 
         
@@ -530,6 +542,7 @@ def cleanup_tags():
     """
     result = _api_request("delete", "/tags/cleanup")
     count = result["count"]
+    logger.info("CLI: cleaned up %s unused tags", count)
     typer.echo(f"Cleaned up {count} unused tags")
 
 @tag_app.command("list")

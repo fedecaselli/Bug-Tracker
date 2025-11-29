@@ -257,8 +257,6 @@ def test_debug_create_issue(file_db, project):
         "status": "open"
     }
     response = client.post("/issues/", json=payload)
-    print(f"Status Code: {response.status_code}")
-    print(f"Response: {response.json()}")
     assert response.status_code == 200
     
 def test_search_issues_api(file_db, project):
@@ -268,8 +266,6 @@ def test_search_issues_api(file_db, project):
     file_db.commit()
     file_db.refresh(issue)
     response = client.get("/issues/search", params={"query": "SearchMe"})
-    print(f"Status Code: {response.status_code}")
-    print(f"Response: {response.json()}")
     assert response.status_code == 200
     assert any(i["title"] == "SearchMe" for i in response.json())
     

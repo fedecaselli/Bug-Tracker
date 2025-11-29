@@ -3,6 +3,7 @@ name: Deploy
 on:
   workflow_run:
     workflows: ["CI"]
+    branches: [ main ]
     types:
       - completed
 
@@ -12,11 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Checkout code
+      - name: Checkout tested commit
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.workflow_run.head_repository.full_name }}
-          ref: ${{ github.event.workflow_run.head_branch }}
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Login to Azure
         uses: azure/login@v1

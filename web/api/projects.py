@@ -11,6 +11,7 @@ Key Features:
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from core.logging import get_logger
 from sqlalchemy.orm import Session
 from core import schemas
 from core.db import get_db
@@ -22,6 +23,7 @@ from web.api.exceptions import handle_repo_exceptions
 
 # Initialize the router for project related endpoints
 router = APIRouter(prefix="/projects", tags=["projects"])
+logger = get_logger(__name__)
 
 
 
@@ -45,7 +47,9 @@ def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
         409: If a conflict occurs.
         422: If validation fails.
     """
-    return repo_projects.create_project(db, data)
+    project = repo_projects.create_project(db, data)
+    logger.info("Created project '%s' (id=%s)", project.name, project.project_id)
+    return project
 
 
 # LIST ALL PROJECTS
@@ -133,7 +137,9 @@ def update_project(project_id: int, data: schemas.ProjectUpdate, db: Session = D
         409: If a conflict occurs.
         422: If validation fails.
     """
-    return repo_projects.update_project(db, project_id, data)
+    updated = repo_projects.update_project(db, project_id, data)
+    logger.info("Updated project id=%s to name='%s'", updated.project_id, updated.name)
+    return updated
 
 
 
@@ -156,7 +162,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
         409: If a conflict occurs.
         422: If validation fails.
     """
+    logger.info("Deleted project id=%s", project_id)
     return repo_projects.delete_project(db, project_id)
-
 
 
